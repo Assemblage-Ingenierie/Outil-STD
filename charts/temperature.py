@@ -102,10 +102,9 @@ def graphique_text_vs_text_op(
     t_ext = variante.df_meteo['T_ext'].values[:n]
     t_int = s_int.values[:n]
 
-    # Colorer par saison
+    # Colorer par saison (couleurs lisibles sur fond blanc)
     saison = variante.df_horaire['saison'].values[:n]
-    couleurs_saison = {'Refroidissement': ROUGE, 'Chauffage': '#2196F3', '': GRIS}
-    colors = [couleurs_saison.get(str(s), GRIS) for s in saison]
+    couleurs_saison = {'Refroidissement': ROUGE, 'Chauffage': '#2196F3', '': '#757575'}
 
     fig = go.Figure()
 
@@ -127,7 +126,7 @@ def graphique_text_vs_text_op(
     fig.add_trace(go.Scatter(
         x=t_range, y=t_range,
         mode='lines',
-        line=dict(color=NOIR70, width=1, dash='dot'),
+        line=dict(color=VIOLET, width=1.5, dash='dash'),
         name='T_int = T_ext',
         hoverinfo='skip',
     ))

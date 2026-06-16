@@ -8,7 +8,8 @@ from views.widgets import persist_multiselect, persist_selectbox
 from config.charte import COULEURS_VARIANTES, GRIS, PLOTLY_LAYOUT
 
 
-def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float, config: dict):
+def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
+                      config: dict, methode: str = "givoni"):
     """Affiche l'analyse détaillée d'une zone pour toutes les variantes."""
     from charts.temperature import (
         graphique_temp_horaire,
@@ -47,12 +48,13 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float, config:
             st.metric("T min", f"{stats['t_min']:.1f} °C")
             st.metric("T moy", f"{stats['t_moy']:.1f} °C")
             st.metric("T max", f"{stats['t_max']:.1f} °C")
+            lib = "COCO" if methode == "coco" else "Givoni"
             st.metric(f"H > {seuil_t1}°C", f"{var.heures_dessus_seuil(zone, seuil_t1)} h")
             st.metric(f"H > {seuil_t2}°C", f"{var.heures_dessus_seuil(zone, seuil_t2)} h")
-            st.metric("H hors confort 0 m/s",
-                      f"{var.heures_hors_confort_givoni(zone, config, 0.0)} h")
-            st.metric("H hors confort 1 m/s",
-                      f"{var.heures_hors_confort_givoni(zone, config, 1.0)} h")
+            st.metric(f"H hors {lib} 0 m/s",
+                      f"{var.heures_hors_confort(zone, config, 0.0, methode)} h")
+            st.metric(f"H hors {lib} 1 m/s",
+                      f"{var.heures_hors_confort(zone, config, 1.0, methode)} h")
             hr_vals = var.col_hr(zone)
             if not hr_vals.empty:
                 st.metric("HR moy", f"{hr_vals.mean():.1f} %")
@@ -72,8 +74,9 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float, config:
     fig_op = graphique_text_vs_text_op(var_sel, zone)
     st.plotly_chart(fig_op, use_container_width=True)
 
-    # -- Diagramme de Givoni --
-    st.subheader("Diagramme de Givoni — Conditions extérieures")
+    # -- Diagramme bioclimatique (Givoni / COCO) --
+    nom_modele = "COCO" if methode == "coco" else "Givoni"
+    st.subheader(f"Diagramme de {nom_modele} — Conditions extérieures")
     var_ref = persist_selectbox("Données météo (variante référence)",
                                 [v.nom for v in variantes_sel], "sel_focus_givoni_ref")
     var_ref_obj = next(v for v in variantes_sel if v.nom == var_ref)
@@ -86,12 +89,13 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float, config:
         fig_giv = creer_givoni(
             var_ref_obj.df_meteo,
             config=config,
+            methode=methode,
             saison=saison,
             periode=periode_options[periode_label],
         )
         st.plotly_chart(fig_giv, use_container_width=True)
     else:
-        st.info("Fichier météo non chargé — Givoni non disponible.")
+        st.info("Fichier météo non chargé — diagramme non disponible.")
 
     # -- Apports solaires & internes --
     st.subheader("Apports solaires mensuels")

@@ -25,7 +25,7 @@ FONT_FAMILY = "Open Sans, sans-serif"
 PLOTLY_LAYOUT = dict(
     font=dict(family=FONT_FAMILY, color=NOIR),
     paper_bgcolor=BLANC,
-    plot_bgcolor=GRIS_CLAIR,
+    plot_bgcolor=BLANC,
     title_font=dict(family=FONT_FAMILY, color=VIOLET, size=14),
     legend=dict(bgcolor=BLANC, bordercolor=GRIS, borderwidth=1),
     margin=dict(l=60, r=30, t=60, b=60),

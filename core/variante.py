@@ -121,17 +121,18 @@ class Variante:
             't_max': float(s.max()),
         }
 
-    def heures_hors_confort_givoni(self, zone: str, config: dict, vitesse: float) -> int:
+    def heures_hors_confort(self, zone: str, config: dict, vitesse: float,
+                            methode: str = "givoni") -> int:
         """
         Nombre d'heures où le point (T intérieure, w intérieure) de la zone
-        sort de la zone de confort de Givoni pour la vitesse d'air donnée.
+        sort de la zone de confort (modèle Givoni ou COCO) pour la vitesse donnée.
         """
         t = self.col_temp(zone)
         w = self.col_w_interieur(zone)
         if t.empty or w.empty:
             return 0
         n = min(len(t), len(w))
-        dedans = confort.dans_zone(t.values[:n], w.values[:n], config, vitesse)
+        dedans = confort.dans_zone(t.values[:n], w.values[:n], config, methode, vitesse)
         return int((~dedans).sum())
 
     def synthese_zone(self, zone: str) -> dict | None:
@@ -148,10 +149,12 @@ class Variante:
 
     def tableau_synthese_global(self, seuil_t1: float, seuil_t2: float,
                                 config: dict | None = None,
-                                zones: list[str] | None = None) -> pd.DataFrame:
+                                zones: list[str] | None = None,
+                                methode: str = "givoni") -> pd.DataFrame:
         """DataFrame de synthèse pour les zones demandées (niveau 1)."""
         config = config or {}
         zones = zones if zones is not None else self.zones
+        libelle = "COCO" if methode == "coco" else "Givoni"
         rows = []
         for zone in zones:
             syn = self.synthese_zone(zone)
@@ -166,8 +169,8 @@ class Variante:
                 'T max (°C)': round(stats['t_max'], 1),
                 f'H > {seuil_t1}°C': self.heures_dessus_seuil(zone, seuil_t1),
                 f'H > {seuil_t2}°C': self.heures_dessus_seuil(zone, seuil_t2),
-                'H hors confort 0 m/s': self.heures_hors_confort_givoni(zone, config, 0.0),
-                'H hors confort 1 m/s': self.heures_hors_confort_givoni(zone, config, 1.0),
+                f'H hors {libelle} 0 m/s': self.heures_hors_confort(zone, config, 0.0, methode),
+                f'H hors {libelle} 1 m/s': self.heures_hors_confort(zone, config, 1.0, methode),
             }
             rows.append(row)
         return pd.DataFrame(rows)

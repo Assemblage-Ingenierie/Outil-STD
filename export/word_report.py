@@ -65,6 +65,7 @@ def generer_rapport(
     zones_focus: list[str] | None = None,
     zones_comparaison: list[str] | None = None,
     nom_projet: str = "Projet STD",
+    methode: str = "givoni",
 ) -> BytesIO:
     """
     Génère le rapport Word complet selon la trame fixe:
@@ -117,7 +118,7 @@ def generer_rapport(
 
     for var in variantes:
         _para_rouge(doc, f"Variante : {var.nom}", level=2)
-        df_table = var.tableau_synthese_global(seuil_t1, seuil_t2, config=config)
+        df_table = var.tableau_synthese_global(seuil_t1, seuil_t2, config=config, methode=methode)
         if df_table.empty:
             doc.add_paragraph("Aucune donnée disponible.")
             continue
@@ -170,10 +171,10 @@ def generer_rapport(
             doc.add_picture(img2, width=Cm(17))
             doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-            # Givoni (avec coloration par saison)
+            # Diagramme bioclimatique (Givoni / COCO, coloration par saison)
             if not variantes[0].df_meteo.empty:
                 fig_giv = creer_givoni(
-                    variantes[0].df_meteo, config=config,
+                    variantes[0].df_meteo, config=config, methode=methode,
                     saison=variantes[0].df_horaire.get('saison'),
                 )
                 img3 = _fig_to_image(fig_giv)

@@ -12,11 +12,10 @@ hr_confort_min = 30.0
 hr_confort_max = 70.0
 
 [givoni]
-t_confort_min = 18.0
-t_confort_max = 27.0
-w_confort_min = 4.0
-w_confort_max = 12.0
-titre_graph = "Diagramme de Givoni — Conditions extérieures"
+# Bornes communes des zones Givoni (les T_max / HR_max par vitesse d'air
+# sont définis dans core/confort.py, conformes à l'outil interne du bureau).
+t_confort_min = 20.0
+hr_confort_min = 20.0
 
 [rapport]
 titre = "Étude Thermique Dynamique"

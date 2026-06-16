@@ -128,6 +128,17 @@ with st.sidebar:
     seuil_t2 = st.number_input("Seuil T2 (°C)", value=28.0, step=0.5, min_value=15.0, max_value=45.0, key="seuil_t2")
 
     st.markdown("---")
+    st.markdown("### Modèle de confort")
+    methode_label = st.radio(
+        "Diagramme bioclimatique",
+        ["Givoni", "COCO (tropical)"],
+        key="methode_confort",
+        help="Givoni : diagramme classique (4 zones par vitesse d'air). "
+             "COCO : adaptation pour climat tropical humide (Antilles, Réunion, Mayotte).",
+    )
+    methode = "coco" if methode_label.startswith("COCO") else "givoni"
+
+    st.markdown("---")
     st.markdown("### Variantes")
 
     # Stockage des chemins sélectionnés via le sélecteur natif
@@ -245,6 +256,7 @@ with st.sidebar:
                         zones_focus=zones_focus_rapport,
                         zones_comparaison=zones_comp_rapport,
                         nom_projet=nom_projet,
+                        methode=methode,
                     )
                     st.download_button(
                         "⬇️ Télécharger le rapport",
@@ -264,10 +276,10 @@ variantes = st.session_state.variantes
 config = st.session_state.config_projet
 
 if vue == "Synthèse générale":
-    render_synthese_generale(variantes, seuil_t1, seuil_t2, config)
+    render_synthese_generale(variantes, seuil_t1, seuil_t2, config, methode)
 
 elif vue == "Focus zone":
-    render_focus_zone(variantes, seuil_t1, seuil_t2, config)
+    render_focus_zone(variantes, seuil_t1, seuil_t2, config, methode)
 
 elif vue == "Comparaison zones":
-    render_comparaison_zones(variantes, seuil_t1, seuil_t2, config)
+    render_comparaison_zones(variantes, seuil_t1, seuil_t2, config, methode)

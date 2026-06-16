@@ -1,4 +1,4 @@
-"""Diagramme de Givoni (diagramme bioclimatique psychrométrique) avec Plotly."""
+"""Diagramme bioclimatique (Givoni ou COCO) avec Plotly."""
 import numpy as np
 import plotly.graph_objects as go
 
@@ -9,12 +9,11 @@ from core.try_parser import humidite_absolue
 from core import confort
 
 
-# Couleurs des deux saisons Pléiades
 COULEUR_CHAUFFE = "#2196F3"        # bleu — saison de chauffe
 COULEUR_REFROIDISSEMENT = ROUGE    # rouge — saison de refroidissement
-COULEUR_INTERSAISON = "#9E9E9E"    # gris — hors saison marquée
+COULEUR_INTERSAISON = "#757575"    # gris foncé — hors saison marquée
 
-W_MAX_PLOT = 30.0   # plafond d'humidité absolue affiché (g/kg)
+W_MAX_PLOT = 30.0
 T_MIN_PLOT = -5.0
 T_MAX_PLOT = 45.0
 
@@ -28,7 +27,6 @@ def _courbe_rh(rh: float) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _classer_saison(saison_arr: np.ndarray) -> np.ndarray:
-    """Normalise les libellés de saison Pléiades en 3 catégories."""
     out = np.full(len(saison_arr), "inter", dtype=object)
     for i, s in enumerate(saison_arr):
         s = str(s).strip().lower()
@@ -42,69 +40,65 @@ def _classer_saison(saison_arr: np.ndarray) -> np.ndarray:
 def creer_givoni(
     df_meteo,
     config: dict,
+    methode: str = "givoni",
     saison=None,
-    titre: str = "Diagramme de Givoni — Conditions extérieures",
+    titre: str | None = None,
     periode: tuple[int, int] | None = None,
 ) -> go.Figure:
     """
-    Crée le diagramme de Givoni des conditions extérieures.
+    Crée le diagramme bioclimatique (Givoni ou COCO) des conditions extérieures.
 
     Args:
         df_meteo : DataFrame météo (colonnes T_ext, w_ext)
-        config   : dict de configuration (clé 'givoni' : bornes de confort)
-        saison   : Series/array optionnel de saison Pléiades, aligné par position
-                   avec df_meteo, pour colorer les points (chauffe / refroidissement)
-        titre    : titre du graphique
+        config   : configuration projet (bornes Givoni)
+        methode  : 'givoni' (4 zones par vitesse d'air) ou 'coco' (2 zones tropicales)
+        saison   : Series/array de saison Pléiades, aligné par position avec df_meteo
+        titre    : titre (auto si None)
         periode  : filtre (mois_debut, mois_fin), None = année entière
     """
+    methode = (methode or "givoni").lower()
+    if titre is None:
+        nom = "COCO" if methode == "coco" else "Givoni"
+        titre = f"Diagramme de {nom} — Conditions extérieures"
+
     fig = go.Figure()
 
     # ------------------------------------------------------------------
-    # 1. Courbe de saturation psychrométrique (HR = 100 %) + iso-HR
+    # 1. Courbe de saturation (HR 100 %) + courbes iso-HR
     # ------------------------------------------------------------------
     T_sat, w_sat = _courbe_rh(100)
     fig.add_trace(go.Scatter(
-        x=T_sat, y=w_sat,
-        mode="lines",
+        x=T_sat, y=w_sat, mode="lines",
         line=dict(color=VIOLET, width=2),
         name="Saturation (HR 100 %)",
         hovertemplate="Saturation<br>T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra></extra>",
     ))
-
     for rh in [20, 40, 60, 80]:
         T_rh, w_rh = _courbe_rh(rh)
         fig.add_trace(go.Scatter(
-            x=T_rh, y=w_rh,
-            mode="lines",
+            x=T_rh, y=w_rh, mode="lines",
             line=dict(color=GRIS, width=0.8, dash="dot"),
-            name=f"HR {rh} %",
-            legendgroup="iso_rh",
-            showlegend=False,
+            name=f"HR {rh} %", legendgroup="iso_rh", showlegend=False,
             hovertemplate=f"HR {rh}%<br>T=%{{x:.1f}}°C<br>w=%{{y:.2f}} g/kg<extra></extra>",
         ))
         if len(T_rh):
             fig.add_annotation(
-                x=T_rh[-1], y=w_rh[-1],
-                text=f"{rh}%", showarrow=False,
-                font=dict(size=8, color=NOIR70),
-                xanchor="left", yanchor="bottom",
+                x=T_rh[-1], y=w_rh[-1], text=f"{rh}%", showarrow=False,
+                font=dict(size=8, color=NOIR70), xanchor="left", yanchor="bottom",
             )
 
     # ------------------------------------------------------------------
-    # 2. Zones de confort emboîtées (0 / 0.5 / 1.0 / 1.5 m/s)
-    #    Tracées de la plus large à la plus restreinte pour la lisibilité.
+    # 2. Zones de confort (polygones) — de la plus large à la plus restreinte
     # ------------------------------------------------------------------
-    for v, couleur in zip(reversed(confort.VITESSES_AIR),
-                          reversed(confort.COULEURS_ZONES)):
-        T_z, W_z = confort.polygone_zone(config, v)
+    zones = confort.zones_modele(config, methode)
+    couleurs = confort.COULEURS_ZONES
+    for idx, (v, label, T_z, W_z) in enumerate(reversed(zones)):
+        couleur = couleurs[(len(zones) - 1 - idx) % len(couleurs)]
         fig.add_trace(go.Scatter(
-            x=T_z, y=W_z,
-            mode="lines",
-            fill="toself",
-            fillcolor="rgba(46,204,113,0.07)",
-            line=dict(color=couleur, width=1.5),
-            name=confort.label_zone(v),
-            hoverinfo="skip",
+            x=T_z, y=W_z, mode="lines", fill="toself",
+            fillcolor="rgba(46,204,113,0.08)",
+            line=dict(color=couleur, width=1.8),
+            name=label, hoverinfo="skip",
         ))
 
     # ------------------------------------------------------------------
@@ -116,7 +110,6 @@ def creer_givoni(
         jours_mois = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
         mois_arr = np.repeat(range(1, 13), [d * 24 for d in jours_mois])[:n]
         df["_mois"] = mois_arr
-
         if saison is not None:
             sais = np.asarray(saison)[:n]
             if len(sais) < n:
@@ -124,7 +117,6 @@ def creer_givoni(
             df["_saison"] = _classer_saison(sais)
         else:
             df["_saison"] = "inter"
-
         if periode:
             df = df[(df["_mois"] >= periode[0]) & (df["_mois"] <= periode[1])]
 
@@ -138,8 +130,7 @@ def creer_givoni(
             if sub.empty:
                 continue
             fig.add_trace(go.Scatter(
-                x=sub["T_ext"], y=sub["w_ext"],
-                mode="markers",
+                x=sub["T_ext"], y=sub["w_ext"], mode="markers",
                 marker=dict(size=3, color=couleur, opacity=0.45),
                 name=label,
                 hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra>" + label + "</extra>",
@@ -151,7 +142,7 @@ def creer_givoni(
     layout = dict(PLOTLY_LAYOUT)
     layout.update(
         title=titre,
-        xaxis=dict(title="Température sèche (°C)", range=[T_MIN_PLOT, T_MAX_PLOT], gridcolor=GRIS),
+        xaxis=dict(title="Température opérative (°C)", range=[T_MIN_PLOT, T_MAX_PLOT], gridcolor=GRIS),
         yaxis=dict(title="Humidité absolue (g/kg air sec)", range=[0, W_MAX_PLOT], gridcolor=GRIS),
         legend=dict(itemsizing="constant"),
         height=600,

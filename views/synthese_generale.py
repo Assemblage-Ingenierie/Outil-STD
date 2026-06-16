@@ -5,7 +5,8 @@ import pandas as pd
 from views.widgets import persist_multiselect
 
 
-def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float, config: dict):
+def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
+                             config: dict, methode: str = "givoni"):
     """Affiche la synthèse générale pour toutes les variantes sélectionnées."""
     from charts.temperature import graphique_heures_depassement, graphique_temp_min_moy_max
 
@@ -27,7 +28,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float, 
     # -- Tableaux par variante --
     for var in variantes_sel:
         st.subheader(f"Variante : {var.nom}")
-        df_table = var.tableau_synthese_global(seuil_t1, seuil_t2, config=config)
+        df_table = var.tableau_synthese_global(seuil_t1, seuil_t2, config=config, methode=methode)
         if df_table.empty:
             st.warning("Aucune donnée de synthèse disponible.")
             continue

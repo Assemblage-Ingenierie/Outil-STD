@@ -8,7 +8,8 @@ from config.charte import COULEURS_VARIANTES, GRIS, ROUGE, PLOTLY_LAYOUT
 from views.widgets import persist_multiselect, persist_selectbox
 
 
-def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float, config: dict):
+def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
+                             config: dict, methode: str = "givoni"):
     """Comparaison d'un échantillon de zones sur une variante sélectionnée."""
     from charts.temperature import (
         graphique_temp_min_moy_max,
@@ -56,8 +57,8 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float, 
             'T max (°C)': round(stats['t_max'], 1),
             f'H > {seuil_t1}°C': var.heures_dessus_seuil(zone, seuil_t1),
             f'H > {seuil_t2}°C': var.heures_dessus_seuil(zone, seuil_t2),
-            'H hors confort 0 m/s': var.heures_hors_confort_givoni(zone, config, 0.0),
-            'H hors confort 1 m/s': var.heures_hors_confort_givoni(zone, config, 1.0),
+            f'H hors {("COCO" if methode=="coco" else "Givoni")} 0 m/s': var.heures_hors_confort(zone, config, 0.0, methode),
+            f'H hors {("COCO" if methode=="coco" else "Givoni")} 1 m/s': var.heures_hors_confort(zone, config, 1.0, methode),
             'HR moy (%)': round(float(hr.mean()), 1) if not hr.empty else '',
         })
 
