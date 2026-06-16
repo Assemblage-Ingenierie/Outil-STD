@@ -5,7 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from views.widgets import persist_multiselect, persist_selectbox
-from config.charte import COULEURS_VARIANTES, GRIS, PLOTLY_LAYOUT
+from config.charte import COULEURS_VARIANTES, GRILLE, PLOTLY_LAYOUT
 
 
 def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
@@ -121,8 +121,8 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     layout = dict(PLOTLY_LAYOUT)
     layout.update(
         title=f'Humidité relative — {zone}',
-        xaxis=dict(title='Date', gridcolor=GRIS),
-        yaxis=dict(title='HR (%)', gridcolor=GRIS, range=[0, 100]),
+        xaxis=dict(title='Date', gridcolor=GRILLE),
+        yaxis=dict(title='HR (%)', gridcolor=GRILLE, range=[0, 100]),
         height=380,
     )
     fig_hr.update_layout(**layout)

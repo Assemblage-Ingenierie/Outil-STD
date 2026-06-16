@@ -7,6 +7,11 @@ NOIR70 = "#4D4D4D"
 BLANC = "#FFFFFF"
 NOIR = "#000000"
 
+# Couleurs dédiées aux graphiques (contraste suffisant sur fond blanc)
+GRILLE = "#C2C8CE"        # lignes de grille — visibles sans dominer
+COURBE_REF = "#7A828B"    # courbes de référence (iso-HR) — gris moyen lisible
+LIGNE_EXT = "#37474F"     # courbe T extérieure — gris-bleu foncé, contraste fort
+
 COULEURS_VARIANTES = [
     "#E30513",
     "#30323E",

@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 
 from config.charte import (
     ROUGE, VIOLET, GRIS, ROUGE_CLAIR, GRIS_CLAIR, BLANC, NOIR, NOIR70,
-    COULEURS_VARIANTES, PLOTLY_LAYOUT
+    GRILLE, LIGNE_EXT, COULEURS_VARIANTES, PLOTLY_LAYOUT
 )
 
 
@@ -62,7 +62,7 @@ def graphique_temp_horaire(
                 x=x[:n], y=t_ext[:n],
                 mode='lines',
                 name='T extérieure',
-                line=dict(color=GRIS, width=1, dash='dot'),
+                line=dict(color=LIGNE_EXT, width=1.3, dash='dot'),
                 hovertemplate='%{x|%d %b %H:%M}<br>T_ext=%{y:.1f}°C<extra>Extérieur</extra>',
             ))
             break
@@ -80,8 +80,8 @@ def graphique_temp_horaire(
     layout = dict(PLOTLY_LAYOUT)
     layout.update(
         title=titre or f'Température intérieure — {zone}',
-        xaxis=dict(title='Date', gridcolor=GRIS),
-        yaxis=dict(title='Température (°C)', gridcolor=GRIS),
+        xaxis=dict(title='Date', gridcolor=GRILLE),
+        yaxis=dict(title='Température (°C)', gridcolor=GRILLE),
         height=420,
     )
     fig.update_layout(**layout)
@@ -134,8 +134,8 @@ def graphique_text_vs_text_op(
     layout = dict(PLOTLY_LAYOUT)
     layout.update(
         title=titre or f'T° opérative vs T° extérieure — {zone}',
-        xaxis=dict(title='T extérieure (°C)', gridcolor=GRIS),
-        yaxis=dict(title='T opérative intérieure (°C)', gridcolor=GRIS),
+        xaxis=dict(title='T extérieure (°C)', gridcolor=GRILLE),
+        yaxis=dict(title='T opérative intérieure (°C)', gridcolor=GRILLE),
         height=420,
     )
     fig.update_layout(**layout)
@@ -215,7 +215,7 @@ def graphique_temp_min_moy_max(
     layout.update(
         title=titre or 'Températures min / moyenne / max par zone',
         xaxis=dict(title='Zone', tickangle=-30),
-        yaxis=dict(title='Température (°C)', gridcolor=GRIS),
+        yaxis=dict(title='Température (°C)', gridcolor=GRILLE),
         barmode='group',
         height=440,
     )
