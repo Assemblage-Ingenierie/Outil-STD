@@ -19,6 +19,7 @@ from core.variante import charger_variante, Variante
 from views.synthese_generale import render_synthese_generale
 from views.focus_zone import render_focus_zone
 from views.comparaison_zones import render_comparaison_zones
+from core.file_picker import choisir_fichier
 
 # -- Chemins --
 BASE_DIR = Path(__file__).parent
@@ -114,17 +115,50 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Variantes")
 
+    # Stockage des chemins sélectionnés via le sélecteur natif
+    for k in ('sel_resultats', 'sel_synthese', 'sel_meteo'):
+        if k not in st.session_state:
+            st.session_state[k] = ''
+
     with st.expander("➕ Ajouter une variante", expanded=len(st.session_state.variantes) == 0):
         nom_var = st.text_input("Nom de la variante", value="Variante 1", key="nom_var_input")
 
-        st.caption("Collez les chemins complets vers vos fichiers (pas de limite de taille)")
-        path_r_input = st.text_input("Résultats (.slk)", placeholder=r"C:\Projet\Résultats.slk", key="path_resultats")
-        path_s_input = st.text_input("Synthèse (.slk)",  placeholder=r"C:\Projet\Synthèse.slk",  key="path_synthese")
-        path_m_input = st.text_input("Météo (.try) — optionnel", placeholder=r"C:\Projet\meteo.try", key="path_meteo")
+        st.caption("Sélectionnez vos fichiers (aucune limite de taille)")
 
-        if st.button("Charger la variante", key="btn_charger"):
+        # --- Résultats ---
+        if st.button("📂 Résultats (.slk)", key="btn_pick_resultats", use_container_width=True):
+            chemin = choisir_fichier("Sélectionner le fichier Résultats",
+                                     [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
+            if chemin:
+                st.session_state.sel_resultats = chemin
+        if st.session_state.sel_resultats:
+            st.caption(f"✓ {Path(st.session_state.sel_resultats).name}")
+
+        # --- Synthèse ---
+        if st.button("📂 Synthèse (.slk)", key="btn_pick_synthese", use_container_width=True):
+            chemin = choisir_fichier("Sélectionner le fichier Synthèse",
+                                     [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
+            if chemin:
+                st.session_state.sel_synthese = chemin
+        if st.session_state.sel_synthese:
+            st.caption(f"✓ {Path(st.session_state.sel_synthese).name}")
+
+        # --- Météo (optionnel) ---
+        if st.button("📂 Météo (.try) — optionnel", key="btn_pick_meteo", use_container_width=True):
+            chemin = choisir_fichier("Sélectionner le fichier météo",
+                                     [("Fichiers météo", "*.try"), ("Tous", "*.*")])
+            if chemin:
+                st.session_state.sel_meteo = chemin
+        if st.session_state.sel_meteo:
+            st.caption(f"✓ {Path(st.session_state.sel_meteo).name}")
+
+        path_r_input = st.session_state.sel_resultats
+        path_s_input = st.session_state.sel_synthese
+        path_m_input = st.session_state.sel_meteo
+
+        if st.button("Charger la variante", key="btn_charger", type="primary"):
             if not path_r_input or not path_s_input:
-                st.error("Les chemins Résultats et Synthèse sont obligatoires.")
+                st.error("Les fichiers Résultats et Synthèse sont obligatoires.")
             elif not Path(path_r_input).exists():
                 st.error(f"Fichier introuvable : {path_r_input}")
             elif not Path(path_s_input).exists():
@@ -143,6 +177,10 @@ with st.sidebar:
                             fichier_meteo=path_m_input or '',
                         )
                         st.session_state.variantes.append(var)
+                        # Réinitialiser les sélections pour la variante suivante
+                        st.session_state.sel_resultats = ''
+                        st.session_state.sel_synthese = ''
+                        st.session_state.sel_meteo = ''
                         st.success(f"✅ '{nom_var}' chargée ({len(var.zones)} zones)")
                     except Exception as e:
                         st.error(f"Erreur : {e}")
