@@ -216,33 +216,29 @@ with st.sidebar:
 
     # -- Export rapport --
     st.markdown("### Export rapport Word")
-    zones_focus_rapport = []
-    zones_comp_rapport = []
-
-    if st.session_state.variantes:
-        all_zones = st.session_state.variantes[0].zones
-        zones_focus_rapport = st.multiselect(
-            "Zones focus dans le rapport",
-            all_zones,
-            default=[],
-            key="rapport_zones_focus"
-        )
-        zones_comp_rapport = st.multiselect(
-            "Zones comparaison dans le rapport",
-            all_zones,
-            default=[],
-            key="rapport_zones_comp"
-        )
+    st.caption("Le rapport reprend les sélections faites dans les vues "
+               "(variantes, zone de focus, échantillon de zones).")
 
     if st.button("📄 Générer rapport Word", key="btn_rapport"):
         if not st.session_state.variantes:
             st.error("Chargez au moins une variante.")
         else:
+            # Récupérer les sélections faites dans les différentes vues
+            ss = st.session_state
+            variantes_rapport = [v for v in ss.variantes
+                                 if v.nom in ss.get('sel_syn_variantes', [v.nom for v in ss.variantes])]
+            if not variantes_rapport:
+                variantes_rapport = ss.variantes
+
+            zone_focus = ss.get('sel_focus_zone')
+            zones_focus_rapport = [zone_focus] if zone_focus else []
+            zones_comp_rapport = ss.get('sel_comp_zones', [])
+
             with st.spinner("Génération du rapport..."):
                 try:
                     from export.word_report import generer_rapport
                     buf = generer_rapport(
-                        variantes=st.session_state.variantes,
+                        variantes=variantes_rapport,
                         config=st.session_state.config_projet,
                         seuil_t1=seuil_t1,
                         seuil_t2=seuil_t2,
@@ -268,10 +264,10 @@ variantes = st.session_state.variantes
 config = st.session_state.config_projet
 
 if vue == "Synthèse générale":
-    render_synthese_generale(variantes, seuil_t1, seuil_t2)
+    render_synthese_generale(variantes, seuil_t1, seuil_t2, config)
 
 elif vue == "Focus zone":
     render_focus_zone(variantes, seuil_t1, seuil_t2, config)
 
 elif vue == "Comparaison zones":
-    render_comparaison_zones(variantes, seuil_t1, seuil_t2)
+    render_comparaison_zones(variantes, seuil_t1, seuil_t2, config)

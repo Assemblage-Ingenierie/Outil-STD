@@ -1,169 +1,160 @@
 """Diagramme de Givoni (diagramme bioclimatique psychrométrique) avec Plotly."""
 import numpy as np
 import plotly.graph_objects as go
+
 from config.charte import (
-    ROUGE, VIOLET, GRIS, ROUGE_CLAIR, GRIS_CLAIR, BLANC, NOIR, NOIR70,
-    COULEURS_VARIANTES, PLOTLY_LAYOUT
+    ROUGE, VIOLET, GRIS, GRIS_CLAIR, BLANC, NOIR, NOIR70, PLOTLY_LAYOUT
 )
 from core.try_parser import humidite_absolue
+from core import confort
 
 
-def _courbes_saturation() -> tuple[np.ndarray, np.ndarray]:
-    """Génère la courbe de saturation RH=100% (T, w)."""
-    T = np.linspace(-5, 50, 300)
-    w = humidite_absolue(T, 100)
-    return T, w
+# Couleurs des deux saisons Pléiades
+COULEUR_CHAUFFE = "#2196F3"        # bleu — saison de chauffe
+COULEUR_REFROIDISSEMENT = ROUGE    # rouge — saison de refroidissement
+COULEUR_INTERSAISON = "#9E9E9E"    # gris — hors saison marquée
+
+W_MAX_PLOT = 30.0   # plafond d'humidité absolue affiché (g/kg)
+T_MIN_PLOT = -5.0
+T_MAX_PLOT = 45.0
 
 
-def _courbe_rh(rh: float, t_range=(-5, 50)) -> tuple[np.ndarray, np.ndarray]:
-    T = np.linspace(t_range[0], t_range[1], 200)
+def _courbe_rh(rh: float) -> tuple[np.ndarray, np.ndarray]:
+    """Courbe iso-humidité relative (T, w) jusqu'au plafond d'affichage."""
+    T = np.linspace(T_MIN_PLOT, T_MAX_PLOT, 250)
     w = humidite_absolue(T, rh)
-    return T, w
+    mask = w <= W_MAX_PLOT
+    return T[mask], w[mask]
 
 
-def _zone_confort_polygon(t_min, t_max, w_min, w_max) -> tuple[list, list]:
-    T = [t_min, t_max, t_max, t_min, t_min]
-    W = [w_min, w_min, w_max, w_max, w_min]
-    return T, W
+def _classer_saison(saison_arr: np.ndarray) -> np.ndarray:
+    """Normalise les libellés de saison Pléiades en 3 catégories."""
+    out = np.full(len(saison_arr), "inter", dtype=object)
+    for i, s in enumerate(saison_arr):
+        s = str(s).strip().lower()
+        if "refroid" in s:
+            out[i] = "refroidissement"
+        elif "chauff" in s:
+            out[i] = "chauffe"
+    return out
 
 
 def creer_givoni(
     df_meteo,
     config: dict,
-    variantes_extra: list[dict] | None = None,
+    saison=None,
     titre: str = "Diagramme de Givoni — Conditions extérieures",
-    periode: tuple[int, int] | None = None,  # (mois_debut, mois_fin)
-    colorby: str = "mois",  # "mois" ou "heure"
+    periode: tuple[int, int] | None = None,
 ) -> go.Figure:
     """
-    Crée le diagramme de Givoni.
+    Crée le diagramme de Givoni des conditions extérieures.
 
     Args:
-        df_meteo: DataFrame météo (colonnes T_ext, HR_ext, w_ext)
-        config: dict avec clés givoni (t_confort_min, t_confort_max, w_confort_min, w_confort_max)
-        variantes_extra: liste optionnelle de dicts {'label': str, 'df_meteo': df} pour comparaison
-        titre: titre du graphique
-        periode: filtre mois (1=jan ... 12=dec), None = année entière
-        colorby: comment colorer les points
+        df_meteo : DataFrame météo (colonnes T_ext, w_ext)
+        config   : dict de configuration (clé 'givoni' : bornes de confort)
+        saison   : Series/array optionnel de saison Pléiades, aligné par position
+                   avec df_meteo, pour colorer les points (chauffe / refroidissement)
+        titre    : titre du graphique
+        periode  : filtre (mois_debut, mois_fin), None = année entière
     """
     fig = go.Figure()
 
-    # -- Courbes iso-humidité relative --
-    for rh in [20, 40, 60, 80, 100]:
-        T_rh, w_rh = _courbe_rh(rh)
-        # Clip au domaine utile
-        mask = w_rh <= 30
-        fig.add_trace(go.Scatter(
-            x=T_rh[mask], y=w_rh[mask],
-            mode='lines',
-            line=dict(color=GRIS, width=0.8, dash='dot'),
-            showlegend=(rh == 20),
-            legendgroup='iso_rh',
-            name=f'Iso-HR {rh}%' if rh == 20 else f'{rh}%',
-            hovertemplate=f'HR={rh}%<br>T=%{{x:.1f}}°C<br>w=%{{y:.2f}} g/kg<extra></extra>',
-        ))
-        # Label
-        t_label = 35
-        w_label = float(humidite_absolue(t_label, rh))
-        if 0 < w_label < 28:
-            fig.add_annotation(
-                x=t_label, y=w_label,
-                text=f'{rh}%',
-                showarrow=False,
-                font=dict(size=8, color=NOIR70),
-                xanchor='left',
-            )
-
-    # -- Zone de confort --
-    gc = config.get('givoni', {})
-    t_c_min = gc.get('t_confort_min', 18)
-    t_c_max = gc.get('t_confort_max', 27)
-    w_c_min = gc.get('w_confort_min', 4)
-    w_c_max = gc.get('w_confort_max', 12)
-
-    T_zc, W_zc = _zone_confort_polygon(t_c_min, t_c_max, w_c_min, w_c_max)
+    # ------------------------------------------------------------------
+    # 1. Courbe de saturation psychrométrique (HR = 100 %) + iso-HR
+    # ------------------------------------------------------------------
+    T_sat, w_sat = _courbe_rh(100)
     fig.add_trace(go.Scatter(
-        x=T_zc, y=W_zc,
-        fill='toself',
-        fillcolor='rgba(46,204,113,0.15)',
-        line=dict(color='#2ECC71', width=1.5),
-        name='Zone de confort',
-        hoverinfo='skip',
+        x=T_sat, y=w_sat,
+        mode="lines",
+        line=dict(color=VIOLET, width=2),
+        name="Saturation (HR 100 %)",
+        hovertemplate="Saturation<br>T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra></extra>",
     ))
 
-    # -- Points météo horaires --
-    df = df_meteo.copy()
-    if periode:
-        # Filtrage par mois: ajouter colonne mois si absente
-        # Le df météo TRY n'a pas de colonne mois, on la génère depuis l'index
-        n = len(df)
-        mois_arr = np.repeat(range(1, 13), [
-            31*24, 28*24, 31*24, 30*24, 31*24, 30*24,
-            31*24, 31*24, 30*24, 31*24, 30*24, 31*24
-        ])[:n]
-        df['mois_'] = mois_arr
-        df = df[(df['mois_'] >= periode[0]) & (df['mois_'] <= periode[1])]
+    for rh in [20, 40, 60, 80]:
+        T_rh, w_rh = _courbe_rh(rh)
+        fig.add_trace(go.Scatter(
+            x=T_rh, y=w_rh,
+            mode="lines",
+            line=dict(color=GRIS, width=0.8, dash="dot"),
+            name=f"HR {rh} %",
+            legendgroup="iso_rh",
+            showlegend=False,
+            hovertemplate=f"HR {rh}%<br>T=%{{x:.1f}}°C<br>w=%{{y:.2f}} g/kg<extra></extra>",
+        ))
+        if len(T_rh):
+            fig.add_annotation(
+                x=T_rh[-1], y=w_rh[-1],
+                text=f"{rh}%", showarrow=False,
+                font=dict(size=8, color=NOIR70),
+                xanchor="left", yanchor="bottom",
+            )
 
-    if colorby == "mois":
-        # Colorer par mois (12 couleurs)
-        n = len(df)
-        mois_arr = np.repeat(range(1, 13), [
-            31*24, 28*24, 31*24, 30*24, 31*24, 30*24,
-            31*24, 31*24, 30*24, 31*24, 30*24, 31*24
-        ])[:n]
-        df = df.copy()
-        df['mois_plot'] = mois_arr[:len(df)]
+    # ------------------------------------------------------------------
+    # 2. Zones de confort emboîtées (0 / 0.5 / 1.0 / 1.5 m/s)
+    #    Tracées de la plus large à la plus restreinte pour la lisibilité.
+    # ------------------------------------------------------------------
+    for v, couleur in zip(reversed(confort.VITESSES_AIR),
+                          reversed(confort.COULEURS_ZONES)):
+        T_z, W_z = confort.polygone_zone(config, v)
+        fig.add_trace(go.Scatter(
+            x=T_z, y=W_z,
+            mode="lines",
+            fill="toself",
+            fillcolor="rgba(46,204,113,0.07)",
+            line=dict(color=couleur, width=1.5),
+            name=confort.label_zone(v),
+            hoverinfo="skip",
+        ))
 
-        noms_mois = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
-        couleurs_mois = [
-            '#2196F3','#42A5F5','#66BB6A','#26A69A',
-            '#FFA726','#FF7043','#E30513','#C62828',
-            '#8D6E63','#78909C','#5C6BC0','#26C6DA'
+    # ------------------------------------------------------------------
+    # 3. Points météo horaires colorés par saison
+    # ------------------------------------------------------------------
+    df = df_meteo.copy().reset_index(drop=True)
+    n = len(df)
+    if n:
+        jours_mois = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        mois_arr = np.repeat(range(1, 13), [d * 24 for d in jours_mois])[:n]
+        df["_mois"] = mois_arr
+
+        if saison is not None:
+            sais = np.asarray(saison)[:n]
+            if len(sais) < n:
+                sais = np.concatenate([sais, np.full(n - len(sais), "")])
+            df["_saison"] = _classer_saison(sais)
+        else:
+            df["_saison"] = "inter"
+
+        if periode:
+            df = df[(df["_mois"] >= periode[0]) & (df["_mois"] <= periode[1])]
+
+        cats = [
+            ("refroidissement", "Saison de refroidissement", COULEUR_REFROIDISSEMENT),
+            ("chauffe", "Saison de chauffe", COULEUR_CHAUFFE),
+            ("inter", "Inter-saison", COULEUR_INTERSAISON),
         ]
-        for m in range(1, 13):
-            mask = df['mois_plot'] == m
-            sub = df[mask]
+        for key, label, couleur in cats:
+            sub = df[df["_saison"] == key]
             if sub.empty:
                 continue
             fig.add_trace(go.Scatter(
-                x=sub['T_ext'], y=sub['w_ext'],
-                mode='markers',
-                marker=dict(size=2, color=couleurs_mois[m-1], opacity=0.5),
-                name=noms_mois[m-1],
-                legendgroup=f'mois_{m}',
-                hovertemplate=f'T=%{{x:.1f}}°C<br>w=%{{y:.2f}} g/kg<extra>{noms_mois[m-1]}</extra>',
-            ))
-    else:
-        fig.add_trace(go.Scatter(
-            x=df['T_ext'], y=df['w_ext'],
-            mode='markers',
-            marker=dict(size=2, color=VIOLET, opacity=0.4),
-            name='Données horaires',
-            hovertemplate='T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra></extra>',
-        ))
-
-    # -- Variantes supplémentaires --
-    if variantes_extra:
-        for i, v in enumerate(variantes_extra):
-            df_v = v['df_meteo']
-            color = COULEURS_VARIANTES[(i+1) % len(COULEURS_VARIANTES)]
-            fig.add_trace(go.Scatter(
-                x=df_v['T_ext'], y=df_v['w_ext'],
-                mode='markers',
-                marker=dict(size=2, color=color, opacity=0.4),
-                name=v['label'],
-                hovertemplate=f'T=%{{x:.1f}}°C<br>w=%{{y:.2f}} g/kg<extra>{v["label"]}</extra>',
+                x=sub["T_ext"], y=sub["w_ext"],
+                mode="markers",
+                marker=dict(size=3, color=couleur, opacity=0.45),
+                name=label,
+                hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra>" + label + "</extra>",
             ))
 
-    # -- Mise en forme --
+    # ------------------------------------------------------------------
+    # 4. Mise en forme
+    # ------------------------------------------------------------------
     layout = dict(PLOTLY_LAYOUT)
     layout.update(
         title=titre,
-        xaxis=dict(title='Température sèche (°C)', range=[-5, 45], gridcolor=GRIS),
-        yaxis=dict(title='Humidité absolue (g/kg a.s.)', range=[0, 30], gridcolor=GRIS),
-        legend=dict(itemsizing='constant'),
-        height=550,
+        xaxis=dict(title="Température sèche (°C)", range=[T_MIN_PLOT, T_MAX_PLOT], gridcolor=GRIS),
+        yaxis=dict(title="Humidité absolue (g/kg air sec)", range=[0, W_MAX_PLOT], gridcolor=GRIS),
+        legend=dict(itemsizing="constant"),
+        height=600,
     )
     fig.update_layout(**layout)
-
     return fig

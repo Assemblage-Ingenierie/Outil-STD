@@ -75,8 +75,9 @@ def generer_rapport(
     """
     from charts.temperature import (
         graphique_heures_depassement,
-        graphique_boite_temp,
+        graphique_temp_min_moy_max,
         graphique_apports_solaires,
+        graphique_apports_par_zone_mensuel,
         graphique_temp_horaire,
         graphique_text_vs_text_op,
     )
@@ -116,7 +117,7 @@ def generer_rapport(
 
     for var in variantes:
         _para_rouge(doc, f"Variante : {var.nom}", level=2)
-        df_table = var.tableau_synthese_global(seuil_t1, seuil_t2)
+        df_table = var.tableau_synthese_global(seuil_t1, seuil_t2, config=config)
         if df_table.empty:
             doc.add_paragraph("Aucune donnée disponible.")
             continue
@@ -169,12 +170,23 @@ def generer_rapport(
             doc.add_picture(img2, width=Cm(17))
             doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-            # Givoni
+            # Givoni (avec coloration par saison)
             if not variantes[0].df_meteo.empty:
-                fig_giv = creer_givoni(variantes[0].df_meteo, config=config)
+                fig_giv = creer_givoni(
+                    variantes[0].df_meteo, config=config,
+                    saison=variantes[0].df_horaire.get('saison'),
+                )
                 img3 = _fig_to_image(fig_giv)
                 doc.add_picture(img3, width=Cm(17))
                 doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Apports solaires + internes
+            fig_sol = graphique_apports_solaires(variantes, zone, type_apport="solaires")
+            doc.add_picture(_fig_to_image(fig_sol), width=Cm(17))
+            doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            fig_int = graphique_apports_solaires(variantes, zone, type_apport="internes")
+            doc.add_picture(_fig_to_image(fig_int), width=Cm(17))
+            doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             doc.add_page_break()
 
@@ -183,14 +195,16 @@ def generer_rapport(
         _para_rouge(doc, "3. Comparaison de zones", level=1)
         var = variantes[0]
 
-        fig_boite = graphique_boite_temp([var], zones_comparaison)
-        img4 = _fig_to_image(fig_boite)
-        doc.add_picture(img4, width=Cm(17))
+        fig_t = graphique_temp_min_moy_max([var], zones_comparaison)
+        doc.add_picture(_fig_to_image(fig_t), width=Cm(17))
         doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         fig_dep = graphique_heures_depassement([var], zones_comparaison, seuil_t1, seuil_t2)
-        img5 = _fig_to_image(fig_dep)
-        doc.add_picture(img5, width=Cm(17))
+        doc.add_picture(_fig_to_image(fig_dep), width=Cm(17))
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        fig_sol = graphique_apports_par_zone_mensuel(var, zones_comparaison, type_apport="solaires")
+        doc.add_picture(_fig_to_image(fig_sol), width=Cm(17))
         doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     # Sauvegarder dans un buffer

@@ -188,35 +188,37 @@ def graphique_heures_depassement(
     return fig
 
 
-def graphique_boite_temp(
+def graphique_temp_min_moy_max(
     variantes: list,
     zones: list[str],
     titre: str | None = None,
 ) -> go.Figure:
-    """Boîtes à moustaches des températures par zone, comparaison variantes."""
+    """Barres groupées T min / moy / max par zone (comparaison variantes)."""
     fig = go.Figure()
+    # Une variante = un groupe de 3 barres (min/moy/max) par zone.
     for i, var in enumerate(variantes):
         color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
+        t_min, t_moy, t_max = [], [], []
         for zone in zones:
-            s = var.col_temp(zone)
-            if s.empty:
-                continue
-            fig.add_trace(go.Box(
-                y=s.values,
-                name=zone,
-                legendgroup=var.nom,
-                legendgrouptitle_text=var.nom,
-                marker_color=color,
-                boxmean=True,
-                showlegend=(zone == zones[0]),
-            ))
+            st = var.stats_temp(zone)
+            t_min.append(round(st['t_min'], 1))
+            t_moy.append(round(st['t_moy'], 1))
+            t_max.append(round(st['t_max'], 1))
+        suffixe = f" — {var.nom}" if len(variantes) > 1 else ""
+        fig.add_trace(go.Bar(x=zones, y=t_min, name=f"T min{suffixe}",
+                             marker_color=color, opacity=0.45))
+        fig.add_trace(go.Bar(x=zones, y=t_moy, name=f"T moy{suffixe}",
+                             marker_color=color, opacity=0.7))
+        fig.add_trace(go.Bar(x=zones, y=t_max, name=f"T max{suffixe}",
+                             marker_color=color, opacity=1.0))
 
     layout = dict(PLOTLY_LAYOUT)
     layout.update(
-        title=titre or 'Distribution des températures intérieures',
+        title=titre or 'Températures min / moyenne / max par zone',
+        xaxis=dict(title='Zone', tickangle=-30),
         yaxis=dict(title='Température (°C)', gridcolor=GRIS),
-        boxmode='group',
-        height=420,
+        barmode='group',
+        height=440,
     )
     fig.update_layout(**layout)
     return fig
@@ -226,18 +228,16 @@ def graphique_apports_solaires(
     variantes: list,
     zone: str,
     titre: str | None = None,
+    type_apport: str = "solaires",
 ) -> go.Figure:
-    """Apports solaires mensuels en barres."""
+    """Apports mensuels (solaires ou internes) en barres — comparaison variantes."""
     fig = go.Figure()
+    libelle = "internes" if type_apport == "internes" else "solaires"
 
     for i, var in enumerate(variantes):
-        s = var.col_apports_sol(zone)
-        if s.empty:
+        monthly = var.apports_mensuels(zone, type_apport)
+        if monthly.empty:
             continue
-        df_h = var.df_horaire.copy()
-        df_h['_apports'] = s.values
-        # Somme mensuelle (W → kWh : × 1h)
-        monthly = df_h.groupby('mois')['_apports'].sum() / 1000  # kWh
         color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
         fig.add_trace(go.Bar(
             x=[NOMS_MOIS[int(m)-1] for m in monthly.index],
@@ -249,11 +249,51 @@ def graphique_apports_solaires(
 
     layout = dict(PLOTLY_LAYOUT)
     layout.update(
-        title=titre or f'Apports solaires mensuels — {zone}',
+        title=titre or f'Apports {libelle} mensuels — {zone}',
         xaxis=dict(title='Mois'),
-        yaxis=dict(title='Apports solaires (kWh)'),
+        yaxis=dict(title=f'Apports {libelle} (kWh)'),
         barmode='group',
         height=380,
+    )
+    fig.update_layout(**layout)
+    return fig
+
+
+def graphique_apports_par_zone_mensuel(
+    variante,
+    zones: list[str],
+    type_apport: str = "solaires",
+    titre: str | None = None,
+) -> go.Figure:
+    """
+    Apports mensuels : une barre par mois par zone (échantillon de zones,
+    une seule variante). x = mois, une couleur par zone, barres groupées.
+    """
+    fig = go.Figure()
+    libelle = "internes" if type_apport == "internes" else "solaires"
+
+    for i, zone in enumerate(zones):
+        monthly = variante.apports_mensuels(zone, type_apport)
+        if monthly.empty:
+            continue
+        # Réindexer sur 1-12 pour aligner toutes les zones
+        monthly = monthly.reindex(range(1, 13), fill_value=0)
+        color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
+        fig.add_trace(go.Bar(
+            x=NOMS_MOIS,
+            y=monthly.values,
+            name=zone,
+            marker_color=color,
+            opacity=0.9,
+        ))
+
+    layout = dict(PLOTLY_LAYOUT)
+    layout.update(
+        title=titre or f'Apports {libelle} mensuels par zone — {variante.nom}',
+        xaxis=dict(title='Mois'),
+        yaxis=dict(title=f'Apports {libelle} (kWh)'),
+        barmode='group',
+        height=440,
     )
     fig.update_layout(**layout)
     return fig
