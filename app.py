@@ -37,10 +37,25 @@ st.markdown("""
         background-color: #30323E;
     }
     [data-testid="stSidebar"] * { color: #FFFFFF !important; }
-    [data-testid="stSidebar"] .stSelectbox label,
-    [data-testid="stSidebar"] .stNumberInput label,
-    [data-testid="stSidebar"] .stTextInput label,
-    [data-testid="stSidebar"] .stFileUploader label { color: #FFFFFF !important; }
+
+    /* Texte saisi dans les champs (input/textarea) en noir sur fond blanc */
+    [data-testid="stSidebar"] input,
+    [data-testid="stSidebar"] textarea,
+    [data-testid="stSidebar"] input::placeholder {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
+    }
+    [data-testid="stSidebar"] input::placeholder,
+    [data-testid="stSidebar"] textarea::placeholder {
+        color: #888888 !important;
+        -webkit-text-fill-color: #888888 !important;
+    }
+    /* Valeur sélectionnée et options des selectbox/multiselect en noir */
+    [data-testid="stSidebar"] [data-baseweb="select"] *,
+    [data-testid="stSidebar"] [data-baseweb="tag"] * {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
+    }
 
     h1, h2, h3 { font-family: 'Open Sans', sans-serif; }
     h1 { color: #E30513; }
