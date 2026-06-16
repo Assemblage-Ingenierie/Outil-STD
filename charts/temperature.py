@@ -1,0 +1,259 @@
+"""Graphiques de température et confort thermique."""
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from config.charte import (
+    ROUGE, VIOLET, GRIS, ROUGE_CLAIR, GRIS_CLAIR, BLANC, NOIR, NOIR70,
+    COULEURS_VARIANTES, PLOTLY_LAYOUT
+)
+
+
+NOMS_MOIS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
+JOURS_CUMULES = [0,31,59,90,120,151,181,212,243,273,304,334,365]
+
+
+def _serie_vers_horodate(df_horaire: pd.DataFrame) -> pd.DatetimeIndex:
+    """Crée un index datetime depuis les colonnes mois/jour/heure."""
+    try:
+        dt = pd.to_datetime({
+            'year': 2024,
+            'month': df_horaire['mois'].astype(int),
+            'day': df_horaire['jour'].astype(int),
+            'hour': (df_horaire['heure'].astype(int) - 1).clip(0, 23),
+        })
+        return dt
+    except Exception:
+        return pd.RangeIndex(len(df_horaire))
+
+
+def graphique_temp_horaire(
+    variantes: list,  # list of Variante
+    zone: str,
+    seuil_t1: float | None = None,
+    seuil_t2: float | None = None,
+    titre: str | None = None,
+) -> go.Figure:
+    """Série temporelle de température intérieure — comparaison variantes."""
+    fig = go.Figure()
+
+    for i, var in enumerate(variantes):
+        s = var.col_temp(zone)
+        if s.empty:
+            continue
+        x = _serie_vers_horodate(var.df_horaire)
+        color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
+        fig.add_trace(go.Scatter(
+            x=x, y=s.values,
+            mode='lines',
+            name=var.nom,
+            line=dict(color=color, width=1),
+            hovertemplate='%{x|%d %b %H:%M}<br>T=%{y:.1f}°C<extra>' + var.nom + '</extra>',
+        ))
+
+    # Température extérieure (depuis première variante avec méteo)
+    for var in variantes:
+        if not var.df_meteo.empty:
+            t_ext = var.df_meteo['T_ext'].values
+            n = min(len(t_ext), len(var.df_horaire))
+            x = _serie_vers_horodate(var.df_horaire)
+            fig.add_trace(go.Scatter(
+                x=x[:n], y=t_ext[:n],
+                mode='lines',
+                name='T extérieure',
+                line=dict(color=GRIS, width=1, dash='dot'),
+                hovertemplate='%{x|%d %b %H:%M}<br>T_ext=%{y:.1f}°C<extra>Extérieur</extra>',
+            ))
+            break
+
+    # Seuils
+    if seuil_t1:
+        fig.add_hline(y=seuil_t1, line_dash='dash', line_color=ROUGE,
+                      annotation_text=f'Seuil T1 ({seuil_t1}°C)',
+                      annotation_position='top right')
+    if seuil_t2:
+        fig.add_hline(y=seuil_t2, line_dash='dash', line_color='#8B0000',
+                      annotation_text=f'Seuil T2 ({seuil_t2}°C)',
+                      annotation_position='bottom right')
+
+    layout = dict(PLOTLY_LAYOUT)
+    layout.update(
+        title=titre or f'Température intérieure — {zone}',
+        xaxis=dict(title='Date', gridcolor=GRIS),
+        yaxis=dict(title='Température (°C)', gridcolor=GRIS),
+        height=420,
+    )
+    fig.update_layout(**layout)
+    return fig
+
+
+def graphique_text_vs_text_op(
+    variante,
+    zone: str,
+    titre: str | None = None,
+) -> go.Figure:
+    """Nuage de points T_op intérieure vs T extérieure."""
+    s_int = variante.col_temp(zone)
+    if s_int.empty or variante.df_meteo.empty:
+        return go.Figure()
+
+    n = min(len(s_int), len(variante.df_meteo))
+    t_ext = variante.df_meteo['T_ext'].values[:n]
+    t_int = s_int.values[:n]
+
+    # Colorer par saison
+    saison = variante.df_horaire['saison'].values[:n]
+    couleurs_saison = {'Refroidissement': ROUGE, 'Chauffage': '#2196F3', '': GRIS}
+    colors = [couleurs_saison.get(str(s), GRIS) for s in saison]
+
+    fig = go.Figure()
+
+    for saison_nom, color in couleurs_saison.items():
+        mask = saison == saison_nom
+        if not any(mask):
+            continue
+        label = saison_nom if saison_nom else 'Inter-saison'
+        fig.add_trace(go.Scatter(
+            x=t_ext[mask], y=t_int[mask],
+            mode='markers',
+            marker=dict(size=3, color=color, opacity=0.4),
+            name=label,
+            hovertemplate='T_ext=%{x:.1f}°C<br>T_int=%{y:.1f}°C<extra>' + label + '</extra>',
+        ))
+
+    # Ligne diagonale (T_int = T_ext)
+    t_range = [min(t_ext.min(), t_int.min()) - 2, max(t_ext.max(), t_int.max()) + 2]
+    fig.add_trace(go.Scatter(
+        x=t_range, y=t_range,
+        mode='lines',
+        line=dict(color=NOIR70, width=1, dash='dot'),
+        name='T_int = T_ext',
+        hoverinfo='skip',
+    ))
+
+    layout = dict(PLOTLY_LAYOUT)
+    layout.update(
+        title=titre or f'T° opérative vs T° extérieure — {zone}',
+        xaxis=dict(title='T extérieure (°C)', gridcolor=GRIS),
+        yaxis=dict(title='T opérative intérieure (°C)', gridcolor=GRIS),
+        height=420,
+    )
+    fig.update_layout(**layout)
+    return fig
+
+
+def graphique_heures_depassement(
+    variantes: list,
+    zones: list[str],
+    seuil_t1: float,
+    seuil_t2: float,
+    mode: str = 'zones',  # 'zones' ou 'variantes'
+) -> go.Figure:
+    """Barres groupées heures de dépassement par zone ou variante."""
+    fig = go.Figure()
+
+    if mode == 'zones':
+        # Un groupe par zone, deux barres (T1, T2) par variante
+        x_labels = zones
+        for i, var in enumerate(variantes):
+            color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
+            h1 = [var.heures_dessus_seuil(z, seuil_t1) for z in zones]
+            h2 = [var.heures_dessus_seuil(z, seuil_t2) for z in zones]
+            fig.add_trace(go.Bar(
+                x=x_labels, y=h1,
+                name=f'{var.nom} > {seuil_t1}°C',
+                marker_color=color, opacity=0.85,
+            ))
+            fig.add_trace(go.Bar(
+                x=x_labels, y=h2,
+                name=f'{var.nom} > {seuil_t2}°C',
+                marker_color=color, opacity=0.5,
+            ))
+    else:
+        for i, var in enumerate(variantes):
+            color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
+            h1 = [var.heures_dessus_seuil(z, seuil_t1) for z in zones]
+            fig.add_trace(go.Bar(x=zones, y=h1, name=var.nom, marker_color=color))
+
+    layout = dict(PLOTLY_LAYOUT)
+    layout.update(
+        title=f'Heures de dépassement (seuils {seuil_t1}°C / {seuil_t2}°C)',
+        xaxis=dict(title='Zone', tickangle=-30),
+        yaxis=dict(title='Heures / an'),
+        barmode='group',
+        height=420,
+    )
+    fig.update_layout(**layout)
+    return fig
+
+
+def graphique_boite_temp(
+    variantes: list,
+    zones: list[str],
+    titre: str | None = None,
+) -> go.Figure:
+    """Boîtes à moustaches des températures par zone, comparaison variantes."""
+    fig = go.Figure()
+    for i, var in enumerate(variantes):
+        color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
+        for zone in zones:
+            s = var.col_temp(zone)
+            if s.empty:
+                continue
+            fig.add_trace(go.Box(
+                y=s.values,
+                name=zone,
+                legendgroup=var.nom,
+                legendgrouptitle_text=var.nom,
+                marker_color=color,
+                boxmean=True,
+                showlegend=(zone == zones[0]),
+            ))
+
+    layout = dict(PLOTLY_LAYOUT)
+    layout.update(
+        title=titre or 'Distribution des températures intérieures',
+        yaxis=dict(title='Température (°C)', gridcolor=GRIS),
+        boxmode='group',
+        height=420,
+    )
+    fig.update_layout(**layout)
+    return fig
+
+
+def graphique_apports_solaires(
+    variantes: list,
+    zone: str,
+    titre: str | None = None,
+) -> go.Figure:
+    """Apports solaires mensuels en barres."""
+    fig = go.Figure()
+
+    for i, var in enumerate(variantes):
+        s = var.col_apports_sol(zone)
+        if s.empty:
+            continue
+        df_h = var.df_horaire.copy()
+        df_h['_apports'] = s.values
+        # Somme mensuelle (W → kWh : × 1h)
+        monthly = df_h.groupby('mois')['_apports'].sum() / 1000  # kWh
+        color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
+        fig.add_trace(go.Bar(
+            x=[NOMS_MOIS[int(m)-1] for m in monthly.index],
+            y=monthly.values,
+            name=var.nom,
+            marker_color=color,
+            opacity=0.85,
+        ))
+
+    layout = dict(PLOTLY_LAYOUT)
+    layout.update(
+        title=titre or f'Apports solaires mensuels — {zone}',
+        xaxis=dict(title='Mois'),
+        yaxis=dict(title='Apports solaires (kWh)'),
+        barmode='group',
+        height=380,
+    )
+    fig.update_layout(**layout)
+    return fig
