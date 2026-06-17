@@ -64,11 +64,17 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
         })
 
     df_comp = pd.DataFrame(rows)
-    cols_couleur = [c for c in df_comp.columns if c.startswith('H >') or c.startswith('% hors')]
-    cols_pct = {c: '{:.1f} %' for c in df_comp.columns if c.startswith('% hors')}
+    cols_pct_list = [c for c in df_comp.columns if c.startswith('% hors')]
+    cols_couleur = [c for c in df_comp.columns if c.startswith('H >')] + cols_pct_list
+    cols_pct = {c: '{:.1f} %' for c in cols_pct_list}
+
+    def _style_na(col):
+        return ['color:#9E9E9E; font-style:italic' if v != v else '' for v in col]
+
     st.dataframe(
         df_comp.style.format(cols_pct, na_rep='—')
-                     .background_gradient(subset=cols_couleur, cmap='YlOrRd'),
+                     .background_gradient(subset=cols_couleur, cmap='YlOrRd')
+                     .apply(_style_na, subset=cols_pct_list),
         use_container_width=True,
         height=min(600, 60 + 35 * len(df_comp)),
     )

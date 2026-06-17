@@ -13,19 +13,40 @@ def parse_try(filepath: str | Path) -> pd.DataFrame:
     filepath = Path(filepath)
     rows = []
 
+    # Le fichier TRY Météonorm est à LARGEUR FIXE. Un découpage par espaces
+    # échoue quand une valeur à 3 chiffres (ex. HR=100, ou un rayonnement)
+    # colle à la colonne voisine sans séparateur, ce qui décale les champs
+    # et fait lire l'HR au mauvais endroit (humidité nulle parasite).
+    # On extrait donc T et HR par tranches de caractères fixes :
+    #   T   : colonnes [4:7]   (°C × 10)
+    #   DNI : colonnes [7:11]
+    #   DHI : colonnes [11:15]
+    #   HR  : colonnes [23:26] (%)
+    SL_T   = slice(4, 7)
+    SL_DNI = slice(7, 11)
+    SL_DHI = slice(11, 15)
+    SL_HR  = slice(23, 26)
+
+    def _num(s, default=0.0):
+        s = s.strip()
+        try:
+            return float(s) if s else default
+        except ValueError:
+            return default
+
     with open(filepath, 'r', encoding='latin-1', errors='replace') as f:
         for line in f:
-            parts = line.split()
-            if len(parts) < 7:
+            if len(line) < 26 or not line[:3].strip():
                 continue
             try:
-                t_ext = int(parts[1]) / 10.0   # °C
-                dni   = float(parts[2])          # W/m²
-                dhi   = float(parts[3])          # W/m²
-                hr_raw = float(parts[6])
-                # Météonorm TRY: quand HR=100%, le champ fusionne avec le suivant
-                # (ex: "1100" = infrared=1 + HR=100). On plafonne à 100%.
-                hr = min(hr_raw, 100.0)
+                t_ext = _num(line[SL_T]) / 10.0          # °C
+                dni   = _num(line[SL_DNI])
+                dhi   = _num(line[SL_DHI])
+                hr    = min(_num(line[SL_HR]), 100.0)    # % (sécurité 0-100)
+                hr    = max(hr, 0.0)
+                # Filtre les lignes d'en-tête éventuelles (T aberrante)
+                if not (-60.0 <= t_ext <= 70.0):
+                    continue
                 rows.append({'T_ext': t_ext, 'HR_ext': hr, 'DNI': dni, 'DHI': dhi})
             except (ValueError, IndexError):
                 continue
