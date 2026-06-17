@@ -34,16 +34,20 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
             continue
 
         cols_couleur = [c for c in df_table.columns
-                        if c.startswith('H >') or c.startswith('H hors')]
+                        if c.startswith('H >') or c.startswith('% hors')]
+        cols_pct = {c: '{:.1f} %' for c in df_table.columns if c.startswith('% hors')}
         st.dataframe(
             df_table.style
                 .format({
                     'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
-                })
+                    **cols_pct,
+                }, na_rep='—')
                 .background_gradient(subset=cols_couleur, cmap='YlOrRd'),
             use_container_width=True,
             height=min(600, 60 + 35 * len(df_table)),
         )
+        st.caption("« % hors » = part des heures d'occupation hors zone de confort "
+                   "(occupation déduite des apports d'occupants). « — » : local non occupé.")
 
         csv = df_table.to_csv(index=False).encode('utf-8-sig')
         st.download_button(

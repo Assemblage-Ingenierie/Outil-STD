@@ -42,6 +42,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
 
     # -- Tableau récapitulatif de l'échantillon --
     st.subheader("Récapitulatif de l'échantillon")
+    lib = "COCO" if methode == "coco" else "Givoni"
     rows = []
     for zone in zones_sel:
         stats = var.stats_temp(zone)
@@ -57,18 +58,22 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
             'T max (°C)': round(stats['t_max'], 1),
             f'H > {seuil_t1}°C': var.heures_dessus_seuil(zone, seuil_t1),
             f'H > {seuil_t2}°C': var.heures_dessus_seuil(zone, seuil_t2),
-            f'H hors {("COCO" if methode=="coco" else "Givoni")} 0 m/s': var.heures_hors_confort(zone, config, 0.0, methode),
-            f'H hors {("COCO" if methode=="coco" else "Givoni")} 1 m/s': var.heures_hors_confort(zone, config, 1.0, methode),
+            f'% hors {lib} 0 m/s': var.pct_hors_confort(zone, config, 0.0, methode),
+            f'% hors {lib} 1 m/s': var.pct_hors_confort(zone, config, 1.0, methode),
             'HR moy (%)': round(float(hr.mean()), 1) if not hr.empty else '',
         })
 
     df_comp = pd.DataFrame(rows)
-    cols_couleur = [c for c in df_comp.columns if c.startswith('H >') or c.startswith('H hors')]
+    cols_couleur = [c for c in df_comp.columns if c.startswith('H >') or c.startswith('% hors')]
+    cols_pct = {c: '{:.1f} %' for c in df_comp.columns if c.startswith('% hors')}
     st.dataframe(
-        df_comp.style.background_gradient(subset=cols_couleur, cmap='YlOrRd'),
+        df_comp.style.format(cols_pct, na_rep='—')
+                     .background_gradient(subset=cols_couleur, cmap='YlOrRd'),
         use_container_width=True,
         height=min(600, 60 + 35 * len(df_comp)),
     )
+    st.caption("« % hors » = part des heures d'occupation hors zone de confort. "
+               "« — » : local non occupé.")
 
     csv = df_comp.to_csv(index=False).encode('utf-8-sig')
     st.download_button("⬇️ Exporter CSV", data=csv,

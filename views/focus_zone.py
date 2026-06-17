@@ -49,12 +49,17 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             st.metric("T moy", f"{stats['t_moy']:.1f} °C")
             st.metric("T max", f"{stats['t_max']:.1f} °C")
             lib = "COCO" if methode == "coco" else "Givoni"
+
+            def _fmt_pct(v):
+                return f"{v:.1f} %" if v == v else "— (non occupé)"
+
             st.metric(f"H > {seuil_t1}°C", f"{var.heures_dessus_seuil(zone, seuil_t1)} h")
             st.metric(f"H > {seuil_t2}°C", f"{var.heures_dessus_seuil(zone, seuil_t2)} h")
-            st.metric(f"H hors {lib} 0 m/s",
-                      f"{var.heures_hors_confort(zone, config, 0.0, methode)} h")
-            st.metric(f"H hors {lib} 1 m/s",
-                      f"{var.heures_hors_confort(zone, config, 1.0, methode)} h")
+            st.metric(f"% hors {lib} 0 m/s",
+                      _fmt_pct(var.pct_hors_confort(zone, config, 0.0, methode)))
+            st.metric(f"% hors {lib} 1 m/s",
+                      _fmt_pct(var.pct_hors_confort(zone, config, 1.0, methode)))
+            st.caption(f"{var.heures_occupation(zone)} h d'occupation/an")
             hr_vals = var.col_hr(zone)
             if not hr_vals.empty:
                 st.metric("HR moy", f"{hr_vals.mean():.1f} %")

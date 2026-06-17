@@ -135,6 +135,36 @@ class Variante:
         dedans = confort.dans_zone(t.values[:n], w.values[:n], config, methode, vitesse)
         return int((~dedans).sum())
 
+    def heures_occupation(self, zone: str) -> int:
+        """
+        Nombre d'heures d'occupation, déduit des apports d'occupants (> 0).
+        """
+        occ = self.col_apports_occupants(zone)
+        if occ.empty:
+            return 0
+        return int((occ.values > 0).sum())
+
+    def pct_hors_confort(self, zone: str, config: dict, vitesse: float,
+                         methode: str = "givoni") -> float:
+        """
+        Pourcentage des HEURES D'OCCUPATION où la zone est hors confort
+        (modèle Givoni ou COCO, vitesse d'air donnée).
+        Retourne NaN si le local n'a aucune heure d'occupation.
+        """
+        t = self.col_temp(zone)
+        w = self.col_w_interieur(zone)
+        occ = self.col_apports_occupants(zone)
+        if t.empty or w.empty or occ.empty:
+            return np.nan
+        n = min(len(t), len(w), len(occ))
+        occupe = occ.values[:n] > 0
+        n_occ = int(occupe.sum())
+        if n_occ == 0:
+            return np.nan
+        dedans = confort.dans_zone(t.values[:n], w.values[:n], config, methode, vitesse)
+        hors_et_occupe = (~dedans) & occupe
+        return 100.0 * int(hors_et_occupe.sum()) / n_occ
+
     def synthese_zone(self, zone: str) -> dict | None:
         """Retourne la ligne de synthèse annuelle pour une zone."""
         df = self.df_synthese
@@ -169,8 +199,8 @@ class Variante:
                 'T max (°C)': round(stats['t_max'], 1),
                 f'H > {seuil_t1}°C': self.heures_dessus_seuil(zone, seuil_t1),
                 f'H > {seuil_t2}°C': self.heures_dessus_seuil(zone, seuil_t2),
-                f'H hors {libelle} 0 m/s': self.heures_hors_confort(zone, config, 0.0, methode),
-                f'H hors {libelle} 1 m/s': self.heures_hors_confort(zone, config, 1.0, methode),
+                f'% hors {libelle} 0 m/s': self.pct_hors_confort(zone, config, 0.0, methode),
+                f'% hors {libelle} 1 m/s': self.pct_hors_confort(zone, config, 1.0, methode),
             }
             rows.append(row)
         return pd.DataFrame(rows)

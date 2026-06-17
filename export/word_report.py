@@ -140,10 +140,17 @@ def generer_rapport(
 
         # Données
         for i, row in df_table.iterrows():
-            for j, val in enumerate(row):
+            for j, (col_name, val) in enumerate(row.items()):
                 cell = table.rows[i+1].cells[j]
-                cell.text = str(val)
-                run = cell.paragraphs[0].runs[0] if cell.paragraphs[0].runs else cell.paragraphs[0].add_run(str(val))
+                # Formatage : NaN -> '—', colonnes '% hors' -> 'xx.x %'
+                if isinstance(val, float) and val != val:      # NaN
+                    txt = '—'
+                elif col_name.startswith('% hors') and isinstance(val, (int, float)):
+                    txt = f"{val:.1f} %"
+                else:
+                    txt = str(val)
+                cell.text = txt
+                run = cell.paragraphs[0].runs[0] if cell.paragraphs[0].runs else cell.paragraphs[0].add_run(txt)
                 run.font.size = Pt(8)
                 run.font.name = 'Open Sans'
                 if i % 2 == 1:
