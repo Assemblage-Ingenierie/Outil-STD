@@ -30,12 +30,19 @@ from core.try_parser import humidite_absolue
 # --- GIVONI : zones par vitesse d'air (T_min/HR_min communs) ---
 GIVONI_T_MIN = 20.0
 GIVONI_HR_MIN = 20.0
+# Construction conforme à l'outil interne (Excel GIVONI du bureau) :
+#   - bord bas  = courbe HR_min  (de t_min à t_max)
+#   - bord gauche = verticale t_min (de HR_min à HR_max)
+#   - bord haut = courbe HR_max, de t_min jusqu'à t_top (par pas de 1 °C)
+#   - diagonale = de (t_top, HR_max) vers le coin (t_max, HR_corner=50 %)
+#   - bord droit = verticale t_max (de HR_corner à HR_min)
+# Cette diagonale haut-droite évite le "pic" et reproduit la forme attendue.
 GIVONI_ZONES = [
-    # (vitesse m/s, T_max °C, HR_max %)
-    (0.0, 27.0, 80.0),
-    (0.5, 30.0, 85.0),
-    (1.0, 32.0, 90.0),
-    (1.5, 33.0, 95.0),
+    # (vitesse m/s, t_min, t_max, hr_min, hr_max, t_top, hr_corner)
+    (0.0, 20.0, 27.0, 20.0, 80.0, 25.0, 50.0),
+    (0.5, 20.0, 30.0, 20.0, 85.0, 26.0, 50.0),
+    (1.0, 20.0, 32.0, 20.0, 90.0, 27.0, 50.0),
+    (1.5, 20.0, 33.0, 20.0, 95.0, 28.0, 50.0),
 ]
 
 # --- COCO : polygones explicites (T °C, w g/kg air sec) ---
@@ -57,29 +64,36 @@ COULEURS_ZONES = ["#2ECC71", "#27AE60", "#16A085", "#0E6655"]
 # Construction des polygones
 # ======================================================================
 
-def _givoni_params(config: dict):
-    """Récupère les paramètres Givoni en tenant compte des surcharges projet."""
+def _givoni_zones_params(config: dict):
+    """
+    Paramètres des zones Givoni. La configuration projet peut surcharger les
+    seuils d'HR max par zone via config['givoni']['hr_max_zones'] = [80,85,90,95].
+    """
     gc = config.get("givoni", {})
-    t_min = float(gc.get("t_confort_min", GIVONI_T_MIN))
-    hr_min = float(gc.get("hr_confort_min", GIVONI_HR_MIN))
-    return t_min, hr_min
+    hr_max_over = gc.get("hr_max_zones")
+    zones = []
+    for i, (v, t_min, t_max, hr_min, hr_max, t_top, hr_corner) in enumerate(GIVONI_ZONES):
+        if hr_max_over and i < len(hr_max_over):
+            hr_max = float(hr_max_over[i])
+        zones.append((v, t_min, t_max, hr_min, hr_max, t_top, hr_corner))
+    return zones
 
 
-def _polygone_givoni(t_min, t_max, hr_min, hr_max, n=40):
+def _polygone_givoni(t_min, t_max, hr_min, hr_max, t_top, hr_corner):
     """
-    Polygone d'une zone Givoni suivant les courbes d'iso-HR.
-      - bord bas  : courbe HR_min, de t_min à t_max
-      - bord droit: verticale à t_max
-      - bord haut : courbe HR_max, de t_max à t_min
-      - bord gauche: verticale à t_min (fermeture)
+    Polygone d'une zone Givoni (ordre conforme à l'Excel du bureau).
+    Chaque sommet est un couple (T, HR) ; l'humidité absolue w est calculée
+    par la formule psychrométrique. Reproduit la forme avec diagonale haut-droite.
     """
-    T_bas = np.linspace(t_min, t_max, n)
-    w_bas = humidite_absolue(T_bas, hr_min)
-    T_haut = np.linspace(t_max, t_min, n)
-    w_haut = humidite_absolue(T_haut, hr_max)
-    T = np.concatenate([T_bas, T_haut, [t_min]])
-    W = np.concatenate([w_bas, w_haut, [w_bas[0]]])
-    return T, W
+    seq = [(t_min, hr_min), (t_min, hr_max)]                       # bord gauche
+    seq += [(float(t), hr_max) for t in range(int(t_min) + 1, int(t_top) + 1)]  # bord haut (HR_max)
+    seq += [(t_max, hr_corner)]                                    # diagonale -> coin
+    seq += [(float(t), hr_min) for t in range(int(t_max), int(t_min) - 1, -1)]  # bord droit + bas (HR_min)
+
+    T = np.array([s[0] for s in seq], dtype=float)
+    HR = np.array([s[1] for s in seq], dtype=float)
+    w = humidite_absolue(T, HR)
+    return T, w
 
 
 def zones_modele(config: dict, methode: str):
@@ -96,9 +110,8 @@ def zones_modele(config: dict, methode: str):
             W = np.array([p[1] for p in sommets] + [sommets[0][1]], dtype=float)
             out.append((v, label, T, W))
     else:  # givoni
-        t_min, hr_min = _givoni_params(config)
-        for v, t_max, hr_max in GIVONI_ZONES:
-            T, W = _polygone_givoni(t_min, t_max, hr_min, hr_max)
+        for v, t_min, t_max, hr_min, hr_max, t_top, hr_corner in _givoni_zones_params(config):
+            T, W = _polygone_givoni(t_min, t_max, hr_min, hr_max, t_top, hr_corner)
             label = label_zone(v)
             out.append((v, label, T, W))
     return out
@@ -143,4 +156,4 @@ def vitesses_modele(methode: str) -> list[float]:
     """Liste des vitesses disponibles pour le modèle."""
     if (methode or "givoni").lower() == "coco":
         return [v for v, _, _ in COCO_ZONES]
-    return [v for v, _, _ in GIVONI_ZONES]
+    return [z[0] for z in GIVONI_ZONES]
