@@ -59,3 +59,49 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     st.download_button("⬇️ Exporter la synthèse (CSV)", data=csv,
                        file_name="synthese_generale.csv", mime="text/csv",
                        key="dl_syn_global")
+
+    st.divider()
+
+    # -- Graphiques au niveau BÂTIMENT : comparaison des variantes --
+    import plotly.graph_objects as go
+    from config.charte import ROUGE, GRILLE, PLOTLY_LAYOUT
+
+    BLEU = "#2196F3"
+    noms_var = list(df.index)
+
+    def _layout(titre, ytitre):
+        lay = dict(PLOTLY_LAYOUT)
+        lay.update(title=titre, xaxis=dict(title="Variante", tickangle=-15),
+                   yaxis=dict(title=ytitre, gridcolor=GRILLE),
+                   barmode="group", height=380)
+        return lay
+
+    # Besoins chaud / froid (kWh/m²)
+    st.subheader("Besoins de chauffage et de climatisation")
+    fig_b = go.Figure()
+    fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins chaud (kWh/m²)"],
+                           name="Chauffage", marker_color=ROUGE))
+    fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins froid (kWh/m²)"],
+                           name="Climatisation", marker_color=BLEU))
+    fig_b.update_layout(**_layout("Besoins par variante (kWh/m²)", "kWh/m²"))
+    st.plotly_chart(fig_b, use_container_width=True)
+
+    # Températures min / moy / max
+    st.subheader("Températures du bâtiment")
+    fig_t = go.Figure()
+    fig_t.add_trace(go.Bar(x=noms_var, y=df["T min (°C)"], name="T min",
+                           marker_color=BLEU, opacity=0.6))
+    fig_t.add_trace(go.Bar(x=noms_var, y=df["T moy (°C)"], name="T moy",
+                           marker_color="#9E9E9E"))
+    fig_t.add_trace(go.Bar(x=noms_var, y=df["T max (°C)"], name="T max",
+                           marker_color=ROUGE, opacity=0.85))
+    fig_t.update_layout(**_layout("Températures par variante (°C)", "°C"))
+    st.plotly_chart(fig_t, use_container_width=True)
+
+    # % hors confort 0 / 1 m/s
+    st.subheader("Part d'inconfort (heures d'occupation)")
+    fig_c = go.Figure()
+    for col, op in [(cols_pct[0], 0.6), (cols_pct[1] if len(cols_pct) > 1 else cols_pct[0], 1.0)]:
+        fig_c.add_trace(go.Bar(x=noms_var, y=df[col], name=col, marker_color=ROUGE, opacity=op))
+    fig_c.update_layout(**_layout("Part d'inconfort par variante (%)", "% des heures d'occupation"))
+    st.plotly_chart(fig_c, use_container_width=True)
