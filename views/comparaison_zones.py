@@ -80,7 +80,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
         height=min(600, 60 + 35 * len(df_comp)),
     )
     st.caption("« % hors » = part des heures d'occupation hors zone de confort. "
-               "« NA » : non évaluable (local non occupé, ou export sans humidité/occupation).")
+               "« NA » : local non occupé.")
 
     csv = df_comp.to_csv(index=False).encode('utf-8-sig')
     st.download_button("⬇️ Exporter CSV", data=csv,

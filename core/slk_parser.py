@@ -23,6 +23,18 @@ GROUPES_UTILES = {
     "pmv": "PMV",
 }
 
+# Grandeurs indispensables au fonctionnement de l'outil dans un fichier
+# RÉSULTATS HORAIRES. Leur absence = export réduit / mauvais fichier → on bloque.
+GROUPES_REQUIS = [
+    "Température (°C)",
+    "Humidité relative (%)",
+    "Apports occupants (W)",
+]
+
+
+class FichierInvalideError(ValueError):
+    """Fichier .slk d'un format inattendu (export réduit, fichier inversé…)."""
+
 
 def _parse_value(raw: str):
     """Convertit une valeur brute SLK en Python (str ou float)."""
@@ -175,6 +187,24 @@ def parse_resultats(filepath: str | Path) -> pd.DataFrame:
     df.attrs['zones'] = zones
     df.attrs['groupes'] = {k: v for k, v in groupes.items() if k in noms_utiles}
 
+    # Validation : un vrai fichier de résultats horaires doit contenir les
+    # grandeurs requises. Sinon c'est un export réduit ou un mauvais fichier.
+    presents = set(groupes.keys())
+    manquants = [g for g in GROUPES_REQUIS if g not in presents]
+    if manquants:
+        raise FichierInvalideError(
+            "Fichier de résultats incomplet : grandeur(s) manquante(s) — "
+            + ", ".join(manquants) + ".\n"
+            "Exportez le fichier de RÉSULTATS HORAIRES complet depuis Pléiades "
+            "(toutes les grandeurs : températures, humidité, apports…), "
+            "et non un export partiel ni le fichier de synthèse."
+        )
+    if not zones:
+        raise FichierInvalideError(
+            "Aucune zone détectée dans ce fichier de résultats. "
+            "Vérifiez qu'il s'agit bien d'un export de résultats horaires Pléiades."
+        )
+
     return df
 
 
@@ -249,7 +279,18 @@ def parse_synthese(filepath: str | Path) -> pd.DataFrame:
                 table1[zone]['volume_m3']         = _f(cellules.get((r, 9)), default=np.nan)
                 table1[zone]['heures_inconfort']  = _f(cellules.get((r, 4)), default=np.nan)
 
-    return pd.DataFrame(list(table1.values()))
+    df = pd.DataFrame(list(table1.values()))
+
+    # Validation : un fichier de synthèse doit avoir des zones et des en-têtes
+    # de besoins. Sinon c'est un mauvais fichier (ex. résultats horaires inversé).
+    a_besoins = any('Besoin' in str(v) for (r, c), v in cellules.items() if r <= 3)
+    if df.empty or not a_besoins:
+        raise FichierInvalideError(
+            "Fichier de synthèse non reconnu : en-têtes « Besoins » absents ou aucune zone. "
+            "Sélectionnez le fichier de SYNTHÈSE Pléiades (et non les résultats horaires)."
+        )
+
+    return df
 
 
 def parse_slk_auto(filepath: str | Path) -> tuple[str, pd.DataFrame]:

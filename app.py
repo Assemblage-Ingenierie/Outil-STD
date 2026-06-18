@@ -16,6 +16,7 @@ st.set_page_config(
 
 # -- Imports internes --
 from core.variante import charger_variante, Variante
+from core.slk_parser import FichierInvalideError
 from views.synthese_generale import render_synthese_generale
 from views.focus_zone import render_focus_zone
 from views.comparaison_zones import render_comparaison_zones
@@ -220,6 +221,9 @@ with st.sidebar:
                         st.session_state.sel_synthese = ''
                         st.session_state.sel_meteo = ''
                         st.success(f"✅ '{nom_var}' chargée ({len(var.zones)} zones)")
+                    except FichierInvalideError as e:
+                        st.error("⛔ Fichier non conforme")
+                        st.warning(str(e))
                     except Exception as e:
                         st.error(f"Erreur : {e}")
 

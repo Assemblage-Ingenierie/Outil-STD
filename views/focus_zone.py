@@ -99,8 +99,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             st.caption("Plusieurs variantes : une couleur par variante. "
                        "Sélectionnez une seule variante pour une coloration par saison.")
     else:
-        st.info("Diagramme indisponible : cet export ne contient pas l'humidité "
-                "relative intérieure (HR) nécessaire au calcul de l'humidité absolue.")
+        st.info("Diagramme indisponible pour cette zone.")
 
     # -- Apports solaires & internes --
     st.subheader("Apports solaires mensuels")

@@ -54,8 +54,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
             height=min(600, 60 + 35 * len(df_table)),
         )
         st.caption("« % hors » = part des heures d'occupation hors zone de confort "
-                   "(occupation déduite des apports d'occupants). "
-                   "« NA » : non évaluable (local non occupé, ou export sans humidité/occupation).")
+                   "(occupation déduite des apports d'occupants). « NA » : local non occupé.")
 
         csv = df_table.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
