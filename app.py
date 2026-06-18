@@ -281,6 +281,9 @@ with st.sidebar:
                     st.session_state.config_projet = charge['params'].get('config', st.session_state.config_projet)
                     if charge.get('descriptions') is not None:
                         st.session_state['descriptions'] = charge['descriptions']
+                    # Forcer l'éditeur de variantes à reprendre les descriptions chargées
+                    for k in ('_desc_base', '_desc_sig', 'editor_descriptions'):
+                        st.session_state.pop(k, None)
                     # Restaurer les sélections persistantes
                     for k, v in (charge.get('selections') or {}).items():
                         st.session_state[k] = v

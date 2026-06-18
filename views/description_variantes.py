@@ -54,20 +54,26 @@ def render_description_variantes(variantes: list):
         "Ce tableau est enregistré avec le projet."
     )
 
-    # Initialiser / synchroniser SEULEMENT quand la liste des variantes change.
-    # (Re-synchroniser à chaque rerun reconstruit le DataFrame et fait « sauter »
-    #  la sélection lors de clics rapides dans l'éditeur.)
+    ss = st.session_state
     sig = tuple(noms)
-    if "descriptions" not in st.session_state or st.session_state["descriptions"] is None:
-        st.session_state["descriptions"] = _table_vierge(noms)
-        st.session_state["_desc_sig"] = sig
-    elif st.session_state.get("_desc_sig") != sig:
-        st.session_state["descriptions"] = _synchroniser_colonnes(
-            st.session_state["descriptions"], noms
-        )
-        st.session_state["_desc_sig"] = sig
 
-    df = st.session_state["descriptions"]
+    # IMPORTANT pour la fluidité : la donnée PASSÉE à l'éditeur ("_desc_base")
+    # doit rester STABLE entre les reruns. Streamlit applique lui-même les
+    # éditions (stockées sous la clé du widget) par-dessus cette base. Si on
+    # réinjecte le résultat édité dans la base à chaque rerun, l'éditeur se
+    # réinitialise et la sélection « saute » sur des clics rapides.
+    # On ne reconstruit la base QUE si la liste des variantes change.
+    if "_desc_base" not in ss or ss["_desc_base"] is None:
+        src = ss.get("descriptions")
+        ss["_desc_base"] = (_synchroniser_colonnes(src.copy(), noms)
+                            if src is not None else _table_vierge(noms))
+        ss["_desc_sig"] = sig
+    elif ss.get("_desc_sig") != sig:
+        # repartir des dernières éditions connues, puis réajuster les colonnes
+        src = ss.get("descriptions", ss["_desc_base"])
+        ss["_desc_base"] = _synchroniser_colonnes(src.copy(), noms)
+        ss["_desc_sig"] = sig
+        ss.pop("editor_descriptions", None)  # reset du widget sur la nouvelle base
 
     col_config = {"Caractéristique": st.column_config.TextColumn(
         "Caractéristique", width="large", required=True)}
@@ -75,14 +81,15 @@ def render_description_variantes(variantes: list):
         col_config[nom] = st.column_config.CheckboxColumn(nom, default=False)
 
     edited = st.data_editor(
-        df,
+        ss["_desc_base"],                 # base stable
         column_config=col_config,
         num_rows="dynamic",
         use_container_width=True,
         hide_index=True,
         key="editor_descriptions",
     )
-    st.session_state["descriptions"] = edited
+    # Donnée courante (pour la sauvegarde projet) — NE PAS la réinjecter dans la base
+    ss["descriptions"] = edited
 
     # Export CSV
     csv = edited.to_csv(index=False).encode("utf-8-sig")

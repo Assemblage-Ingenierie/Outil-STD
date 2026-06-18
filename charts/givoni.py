@@ -10,8 +10,8 @@ from core.try_parser import humidite_absolue
 from core import confort
 
 
-COULEUR_CHAUFFE = "#2196F3"        # bleu — saison de chauffe
-COULEUR_REFROIDISSEMENT = ROUGE    # rouge — saison de refroidissement
+COULEUR_CHAUFFE = ROUGE            # rouge — saison de chauffe (chaud)
+COULEUR_REFROIDISSEMENT = "#2196F3"  # bleu — saison de refroidissement (froid)
 COULEUR_INTERSAISON = "#757575"    # gris foncé — hors saison marquée
 
 W_MAX_PLOT = 30.0

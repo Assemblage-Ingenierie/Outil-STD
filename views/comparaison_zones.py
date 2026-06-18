@@ -105,8 +105,8 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
         fig_bes = go.Figure()
         besoins_ch = [var.synthese_zone(z)['besoins_chaud_kwh_m2'] for z in zones_sel]
         besoins_fr = [var.synthese_zone(z)['besoins_froid_kwh_m2'] for z in zones_sel]
-        fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_ch, name='Chauffage', marker_color='#2196F3'))
-        fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_fr, name='Climatisation', marker_color=ROUGE))
+        fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_ch, name='Chauffage', marker_color=ROUGE))
+        fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_fr, name='Climatisation', marker_color='#2196F3'))
         layout = dict(PLOTLY_LAYOUT)
         layout.update(title='Besoins annuels par zone (kWh/m²)', xaxis=dict(tickangle=-30),
                       yaxis=dict(title='kWh/m²'), barmode='group', height=400)

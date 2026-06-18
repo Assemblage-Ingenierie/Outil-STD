@@ -104,7 +104,7 @@ def graphique_text_vs_text_op(
 
     # Colorer par saison (couleurs lisibles sur fond blanc)
     saison = variante.df_horaire['saison'].values[:n]
-    couleurs_saison = {'Refroidissement': ROUGE, 'Chauffage': '#2196F3', '': '#757575'}
+    couleurs_saison = {'Refroidissement': '#2196F3', 'Chauffage': ROUGE, '': '#757575'}
 
     fig = go.Figure()
 
