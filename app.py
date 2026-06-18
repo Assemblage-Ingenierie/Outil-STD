@@ -186,6 +186,7 @@ with st.sidebar:
                                  [("Fichiers météo", "*.try"), ("Tous", "*.*")])
         if chemin:
             st.session_state['meteo_projet'] = chemin
+            st.rerun()
     if st.session_state['meteo_projet']:
         cmp1, cmp2 = st.columns([4, 1])
         cmp1.caption(f"🌤️ {Path(st.session_state['meteo_projet']).name}")
@@ -220,6 +221,7 @@ with st.sidebar:
                                      [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
             if chemin:
                 st.session_state.sel_resultats = chemin
+                st.rerun()   # ré-affiche le panneau ouvert avec le fichier sélectionné
         if st.session_state.sel_resultats:
             st.caption(f"✓ {Path(st.session_state.sel_resultats).name}")
 
@@ -229,6 +231,7 @@ with st.sidebar:
                                      [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
             if chemin:
                 st.session_state.sel_synthese = chemin
+                st.rerun()
         if st.session_state.sel_synthese:
             st.caption(f"✓ {Path(st.session_state.sel_synthese).name}")
 
@@ -239,6 +242,7 @@ with st.sidebar:
                                      [("Fichiers météo", "*.try"), ("Tous", "*.*")])
             if chemin:
                 st.session_state.sel_meteo = chemin
+                st.rerun()
         if st.session_state.sel_meteo:
             mc1, mc2 = st.columns([4, 1])
             mc1.caption(f"✓ {Path(st.session_state.sel_meteo).name} (spécifique)")
