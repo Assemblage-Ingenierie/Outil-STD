@@ -205,12 +205,19 @@ with st.sidebar:
         if k not in st.session_state:
             st.session_state[k] = ''
 
-    # Garder le panneau ouvert tant qu'un ajout est en cours (au moins un
-    # fichier déjà sélectionné), sinon il se referme à chaque import.
-    ajout_en_cours = bool(st.session_state.sel_resultats or st.session_state.sel_synthese
-                          or st.session_state.sel_meteo)
-    with st.expander("➕ Ajouter une variante",
-                     expanded=(len(st.session_state.variantes) == 0 or ajout_en_cours)):
+    # Panneau d'ajout contrôlé par un drapeau (et non par st.expander, dont
+    # l'état d'ouverture n'est pas fiable après interaction). Reste ouvert
+    # pendant toute la sélection des fichiers.
+    if 'form_ajout' not in st.session_state:
+        st.session_state['form_ajout'] = (len(st.session_state.variantes) == 0)
+
+    label_btn = "▲ Fermer l'ajout" if st.session_state['form_ajout'] else "➕ Ajouter une variante"
+    if st.button(label_btn, key="toggle_form_ajout", use_container_width=True):
+        st.session_state['form_ajout'] = not st.session_state['form_ajout']
+        st.rerun()
+
+    if st.session_state['form_ajout']:
+      with st.container(border=True):
         nom_var = st.text_input("Nom de la variante", value="Variante 1", key="nom_var_input")
 
         st.caption("Sélectionnez vos fichiers (aucune limite de taille)")
@@ -276,11 +283,13 @@ with st.sidebar:
                         var = charger_variante_rapide(
                             nom_var, path_r_input, path_s_input, path_m_input or '')
                         st.session_state.variantes.append(var)
-                        # Réinitialiser les sélections pour la variante suivante
+                        # Réinitialiser les sélections et fermer le panneau
                         st.session_state.sel_resultats = ''
                         st.session_state.sel_synthese = ''
                         st.session_state.sel_meteo = ''
+                        st.session_state['form_ajout'] = False
                         st.success(f"✅ '{nom_var}' chargée ({len(var.zones)} zones)")
+                        st.rerun()
                     except FichierInvalideError as e:
                         st.error("⛔ Fichier non conforme")
                         st.warning(str(e))
