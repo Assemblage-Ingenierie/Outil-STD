@@ -178,12 +178,15 @@ def generer_rapport(
             doc.add_picture(img2, width=Cm(17))
             doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-            # Diagramme bioclimatique (Givoni / COCO, coloration par saison)
-            if not variantes[0].df_meteo.empty:
-                fig_giv = creer_givoni(
-                    variantes[0].df_meteo, config=config, methode=methode,
-                    saison=variantes[0].df_horaire.get('saison'),
-                )
+            # Diagramme bioclimatique (Givoni / COCO) — conditions intérieures
+            series = []
+            for v in variantes:
+                pts = v.points_interieurs_givoni(zone, config, methode)
+                if len(pts['T']):
+                    pts['label'] = v.nom
+                    series.append(pts)
+            if series:
+                fig_giv = creer_givoni(series, config=config, methode=methode)
                 img3 = _fig_to_image(fig_giv)
                 doc.add_picture(img3, width=Cm(17))
                 doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER

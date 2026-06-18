@@ -79,28 +79,27 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     fig_op = graphique_text_vs_text_op(var_sel, zone)
     st.plotly_chart(fig_op, use_container_width=True)
 
-    # -- Diagramme bioclimatique (Givoni / COCO) --
+    # -- Diagramme bioclimatique (Givoni / COCO) — conditions INTÉRIEURES --
     nom_modele = "COCO" if methode == "coco" else "Givoni"
-    st.subheader(f"Diagramme de {nom_modele} — Conditions extérieures")
-    var_ref = persist_selectbox("Données météo (variante référence)",
-                                [v.nom for v in variantes_sel], "sel_focus_givoni_ref")
-    var_ref_obj = next(v for v in variantes_sel if v.nom == var_ref)
+    st.subheader(f"Diagramme de {nom_modele} — Conditions intérieures de la zone")
+    st.caption("Points = conditions intérieures horaires de la zone. Les heures de "
+               "saison de chauffe sous la consigne (T < min confort) sont écartées.")
 
-    if not var_ref_obj.df_meteo.empty:
-        periode_options = {'Année entière': None, 'Été (mai-oct)': (5, 10), 'Hiver (nov-avr)': (11, 4)}
-        periode_label = persist_selectbox("Période", list(periode_options.keys()),
-                                          "sel_focus_givoni_periode")
-        saison = var_ref_obj.df_horaire.get('saison')
-        fig_giv = creer_givoni(
-            var_ref_obj.df_meteo,
-            config=config,
-            methode=methode,
-            saison=saison,
-            periode=periode_options[periode_label],
-        )
+    series = []
+    for v in variantes_sel:
+        pts = v.points_interieurs_givoni(zone, config, methode)
+        if len(pts['T']):
+            pts['label'] = v.nom
+            series.append(pts)
+
+    if series:
+        fig_giv = creer_givoni(series, config=config, methode=methode)
         st.plotly_chart(fig_giv, use_container_width=True)
+        if len(series) > 1:
+            st.caption("Plusieurs variantes : une couleur par variante. "
+                       "Sélectionnez une seule variante pour une coloration par saison.")
     else:
-        st.info("Fichier météo non chargé — diagramme non disponible.")
+        st.info("Données intérieures indisponibles pour cette zone.")
 
     # -- Apports solaires & internes --
     st.subheader("Apports solaires mensuels")

@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 
 from config.charte import (
     ROUGE, VIOLET, GRIS, GRIS_CLAIR, BLANC, NOIR, NOIR70,
-    GRILLE, COURBE_REF, PLOTLY_LAYOUT
+    GRILLE, COURBE_REF, COULEURS_VARIANTES, PLOTLY_LAYOUT
 )
 from core.try_parser import humidite_absolue
 from core import confort
@@ -39,28 +39,28 @@ def _classer_saison(saison_arr: np.ndarray) -> np.ndarray:
 
 
 def creer_givoni(
-    df_meteo,
+    series,
     config: dict,
     methode: str = "givoni",
-    saison=None,
     titre: str | None = None,
-    periode: tuple[int, int] | None = None,
 ) -> go.Figure:
     """
-    Crée le diagramme bioclimatique (Givoni ou COCO) des conditions extérieures.
+    Crée le diagramme bioclimatique (Givoni ou COCO) des conditions INTÉRIEURES.
 
     Args:
-        df_meteo : DataFrame météo (colonnes T_ext, w_ext)
+        series   : liste de dicts {'label', 'T', 'w', 'saison'(optionnel)}.
+                   - 1 seule série : points colorés par saison (chauffe/refroid.)
+                   - plusieurs séries : une couleur par série (comparaison variantes)
         config   : configuration projet (bornes Givoni)
         methode  : 'givoni' (4 zones par vitesse d'air) ou 'coco' (2 zones tropicales)
-        saison   : Series/array de saison Pléiades, aligné par position avec df_meteo
         titre    : titre (auto si None)
-        periode  : filtre (mois_debut, mois_fin), None = année entière
     """
     methode = (methode or "givoni").lower()
+    if isinstance(series, dict):
+        series = [series]
     if titre is None:
         nom = "COCO" if methode == "coco" else "Givoni"
-        titre = f"Diagramme de {nom} — Conditions extérieures"
+        titre = f"Diagramme de {nom} — Conditions intérieures"
 
     fig = go.Figure()
 
@@ -103,38 +103,41 @@ def creer_givoni(
         ))
 
     # ------------------------------------------------------------------
-    # 3. Points météo horaires colorés par saison
+    # 3. Points horaires intérieurs
     # ------------------------------------------------------------------
-    df = df_meteo.copy().reset_index(drop=True)
-    n = len(df)
-    if n:
-        jours_mois = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        mois_arr = np.repeat(range(1, 13), [d * 24 for d in jours_mois])[:n]
-        df["_mois"] = mois_arr
-        if saison is not None:
-            sais = np.asarray(saison)[:n]
-            if len(sais) < n:
-                sais = np.concatenate([sais, np.full(n - len(sais), "")])
-            df["_saison"] = _classer_saison(sais)
-        else:
-            df["_saison"] = "inter"
-        if periode:
-            df = df[(df["_mois"] >= periode[0]) & (df["_mois"] <= periode[1])]
+    series = [s for s in (series or []) if s is not None and len(s.get('T', [])) > 0]
 
+    if len(series) == 1:
+        # Coloration par saison
+        s = series[0]
+        T = np.asarray(s['T'], float)
+        w = np.asarray(s['w'], float)
+        sais = _classer_saison(np.asarray(s.get('saison', np.array([''] * len(T)))))
         cats = [
             ("refroidissement", "Saison de refroidissement", COULEUR_REFROIDISSEMENT),
             ("chauffe", "Saison de chauffe", COULEUR_CHAUFFE),
             ("inter", "Inter-saison", COULEUR_INTERSAISON),
         ]
         for key, label, couleur in cats:
-            sub = df[df["_saison"] == key]
-            if sub.empty:
+            m = sais == key
+            if not m.any():
                 continue
             fig.add_trace(go.Scatter(
-                x=sub["T_ext"], y=sub["w_ext"], mode="markers",
+                x=T[m], y=w[m], mode="markers",
                 marker=dict(size=3, color=couleur, opacity=0.45),
                 name=label,
                 hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra>" + label + "</extra>",
+            ))
+    else:
+        # Une couleur par série (comparaison de variantes)
+        for i, s in enumerate(series):
+            couleur = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
+            fig.add_trace(go.Scatter(
+                x=np.asarray(s['T'], float), y=np.asarray(s['w'], float),
+                mode="markers",
+                marker=dict(size=3, color=couleur, opacity=0.40),
+                name=s.get('label', f'Série {i+1}'),
+                hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra>" + s.get('label', '') + "</extra>",
             ))
 
     # ------------------------------------------------------------------

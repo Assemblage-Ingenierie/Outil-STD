@@ -31,3 +31,32 @@ def choisir_fichier(titre: str = "Sélectionner un fichier",
     root.destroy()
 
     return chemin if chemin else None
+
+
+def enregistrer_fichier(titre: str = "Enregistrer sous",
+                        filetypes: list[tuple[str, str]] | None = None,
+                        extension_defaut: str = "",
+                        nom_defaut: str = "") -> str | None:
+    """
+    Ouvre la boîte de dialogue Windows « Enregistrer sous ».
+    Retourne le chemin complet choisi, ou None si annulé.
+    """
+    import tkinter as tk
+    from tkinter import filedialog
+
+    if filetypes is None:
+        filetypes = [("Tous les fichiers", "*.*")]
+
+    root = tk.Tk()
+    root.withdraw()
+    root.wm_attributes('-topmost', 1)
+
+    chemin = filedialog.asksaveasfilename(
+        title=titre,
+        filetypes=filetypes,
+        defaultextension=extension_defaut,
+        initialfile=nom_defaut,
+    )
+    root.destroy()
+
+    return chemin if chemin else None

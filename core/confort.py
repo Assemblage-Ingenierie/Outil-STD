@@ -157,3 +157,32 @@ def vitesses_modele(methode: str) -> list[float]:
     if (methode or "givoni").lower() == "coco":
         return [v for v, _, _ in COCO_ZONES]
     return [z[0] for z in GIVONI_ZONES]
+
+
+def t_min_modele(config: dict, methode: str) -> float:
+    """Borne basse de température (°C) de la zone de confort du modèle."""
+    zones = zones_modele(config, methode)
+    if not zones:
+        return 20.0
+    # min des T de tous les polygones
+    return float(min(float(np.min(T)) for _, _, T, _ in zones))
+
+
+def masque_chauffe_sous_consigne(T, saison, config: dict, methode: str):
+    """
+    Masque booléen des heures à EXCLURE : saison de chauffe ET température
+    sous la borne basse de confort (le local est chauffé à une consigne
+    inférieure au minimum Givoni — ce n'est pas de l'inconfort, juste un choix
+    de consigne). À retirer du décompte et de l'affichage des points.
+    """
+    T = np.asarray(T, dtype=float)
+    if saison is None:
+        return np.zeros(T.shape, dtype=bool)
+    sais = np.asarray(saison)
+    n = min(len(T), len(sais))
+    est_chauffe = np.array(["chauff" in str(s).strip().lower() for s in sais[:n]])
+    t_min = t_min_modele(config, methode)
+    sous_consigne = T[:n] < t_min
+    out = np.zeros(T.shape, dtype=bool)
+    out[:n] = est_chauffe & sous_consigne
+    return out

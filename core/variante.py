@@ -149,6 +149,10 @@ class Variante:
         """
         Pourcentage des HEURES D'OCCUPATION où la zone est hors confort
         (modèle Givoni ou COCO, vitesse d'air donnée).
+
+        Les heures de saison de chauffe sous la consigne (T < borne basse de
+        confort) sont considérées comme CONFORTABLES (chauffage à une consigne
+        plus basse que le minimum Givoni n'est pas de l'inconfort).
         Retourne NaN si le local n'a aucune heure d'occupation.
         """
         t = self.col_temp(zone)
@@ -162,8 +166,29 @@ class Variante:
         if n_occ == 0:
             return np.nan
         dedans = confort.dans_zone(t.values[:n], w.values[:n], config, methode, vitesse)
-        hors_et_occupe = (~dedans) & occupe
+        # Exonérer les heures de chauffe sous consigne
+        saison = self.df_horaire['saison'].values[:n] if 'saison' in self.df_horaire else None
+        exempt = confort.masque_chauffe_sous_consigne(t.values[:n], saison, config, methode)
+        hors_et_occupe = (~dedans) & (~exempt) & occupe
         return 100.0 * int(hors_et_occupe.sum()) / n_occ
+
+    def points_interieurs_givoni(self, zone: str, config: dict, methode: str = "givoni"):
+        """
+        Conditions intérieures de la zone pour le diagramme de Givoni :
+        (T_int, w_int, saison), après retrait des heures de chauffe sous consigne.
+        Retourne un dict de numpy arrays {T, w, saison}.
+        """
+        t = self.col_temp(zone)
+        w = self.col_w_interieur(zone)
+        if t.empty or w.empty:
+            return {'T': np.array([]), 'w': np.array([]), 'saison': np.array([])}
+        n = min(len(t), len(w))
+        T = t.values[:n]
+        W = w.values[:n]
+        saison = self.df_horaire['saison'].values[:n] if 'saison' in self.df_horaire else np.array([''] * n)
+        exempt = confort.masque_chauffe_sous_consigne(T, saison, config, methode)
+        garde = ~exempt
+        return {'T': T[garde], 'w': W[garde], 'saison': np.asarray(saison)[garde]}
 
     def synthese_zone(self, zone: str) -> dict | None:
         """Retourne la ligne de synthèse annuelle pour une zone."""

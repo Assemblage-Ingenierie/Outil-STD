@@ -19,7 +19,9 @@ from core.variante import charger_variante, Variante
 from views.synthese_generale import render_synthese_generale
 from views.focus_zone import render_focus_zone
 from views.comparaison_zones import render_comparaison_zones
-from core.file_picker import choisir_fichier
+from views.description_variantes import render_description_variantes
+from core.file_picker import choisir_fichier, enregistrer_fichier
+from core import projet as projet_io
 
 # -- Chemins --
 BASE_DIR = Path(__file__).parent
@@ -104,14 +106,6 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 🏗️ Outil STD")
 
-    # -- Navigation --
-    vue = st.radio(
-        "Vue",
-        ["Synthèse générale", "Focus zone", "Comparaison zones"],
-        key="nav_vue"
-    )
-
-    st.markdown("---")
     st.markdown("### Paramètres projet")
 
     nom_projet = st.text_input(
@@ -137,6 +131,24 @@ with st.sidebar:
              "COCO : adaptation pour climat tropical humide (Antilles, Réunion, Mayotte).",
     )
     methode = "coco" if methode_label.startswith("COCO") else "givoni"
+
+    # -- Bornes Givoni éditables (gestion dynamique) --
+    if methode == "givoni":
+        with st.expander("⚙️ Bornes Givoni (avancé)"):
+            gc = st.session_state.config_projet.setdefault('givoni', {})
+            t_min = st.number_input(
+                "Température min confort (°C)", value=float(gc.get('t_confort_min', 20.0)),
+                step=0.5, min_value=10.0, max_value=25.0, key="giv_t_min")
+            st.caption("Seuils HR max par zone (vitesse d'air) :")
+            c1, c2 = st.columns(2)
+            hr0 = c1.number_input("HR max 0 m/s (%)", value=80.0, step=1.0, min_value=50.0, max_value=100.0, key="giv_hr0")
+            hr1 = c2.number_input("HR max 0,5 m/s (%)", value=85.0, step=1.0, min_value=50.0, max_value=100.0, key="giv_hr05")
+            hr2 = c1.number_input("HR max 1 m/s (%)", value=90.0, step=1.0, min_value=50.0, max_value=100.0, key="giv_hr1")
+            hr3 = c2.number_input("HR max 1,5 m/s (%)", value=95.0, step=1.0, min_value=50.0, max_value=100.0, key="giv_hr15")
+            gc['t_confort_min'] = t_min
+            gc['hr_max_zones'] = [hr0, hr1, hr2, hr3]
+    else:
+        st.caption("Zones COCO : standard tropical (non éditable).")
 
     st.markdown("---")
     st.markdown("### Variantes")
@@ -225,6 +237,57 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # -- Projet : enregistrer / ouvrir --
+    st.markdown("### 💾 Projet")
+    cpa, cpb = st.columns(2)
+    with cpa:
+        if st.button("Enregistrer", key="btn_save_projet", use_container_width=True):
+            if not st.session_state.variantes:
+                st.warning("Aucune variante à enregistrer.")
+            else:
+                chemin = enregistrer_fichier(
+                    "Enregistrer le projet STD",
+                    [("Projet STD", "*.stdproj")],
+                    extension_defaut=".stdproj",
+                    nom_defaut=(nom_projet or "projet") + ".stdproj",
+                )
+                if chemin:
+                    try:
+                        etat = {
+                            'nom_projet': nom_projet,
+                            'params': {'seuil_t1': seuil_t1, 'seuil_t2': seuil_t2,
+                                       'methode': methode, 'config': st.session_state.config_projet},
+                            'variantes': st.session_state.variantes,
+                            'descriptions': st.session_state.get('descriptions'),
+                            'selections': {k: v for k, v in st.session_state.items()
+                                           if k.startswith('sel_')},
+                        }
+                        p = projet_io.sauvegarder_projet(chemin, etat)
+                        st.success(f"✅ Projet enregistré : {p.name}")
+                    except Exception as e:
+                        st.error(f"Erreur enregistrement : {e}")
+    with cpb:
+        if st.button("Ouvrir", key="btn_open_projet", use_container_width=True):
+            chemin = choisir_fichier("Ouvrir un projet STD",
+                                     [("Projet STD", "*.stdproj"), ("Tous", "*.*")])
+            if chemin:
+                try:
+                    charge = projet_io.charger_projet(chemin)
+                    st.session_state.variantes = charge['variantes']
+                    st.session_state.config_projet = charge['params'].get('config', st.session_state.config_projet)
+                    if charge.get('descriptions') is not None:
+                        st.session_state['descriptions'] = charge['descriptions']
+                    # Restaurer les sélections persistantes
+                    for k, v in (charge.get('selections') or {}).items():
+                        st.session_state[k] = v
+                    st.session_state['_projet_charge'] = charge.get('nom_projet', '')
+                    st.success(f"✅ Projet ouvert : {charge.get('nom_projet','')}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erreur ouverture : {e}")
+
+    st.markdown("---")
+
     # -- Export rapport --
     st.markdown("### Export rapport Word")
     st.caption("Le rapport reprend les sélections faites dans les vues "
@@ -270,10 +333,20 @@ with st.sidebar:
 
 
 # ============================================================
-# ZONE PRINCIPALE
+# ZONE PRINCIPALE — navigation par onglets
 # ============================================================
 variantes = st.session_state.variantes
 config = st.session_state.config_projet
+
+VUES = ["Synthèse générale", "Focus zone", "Comparaison zones", "Variantes"]
+if hasattr(st, "segmented_control"):
+    vue = st.segmented_control("Vue", VUES, default="Synthèse générale",
+                               key="nav_vue", label_visibility="collapsed")
+else:
+    vue = st.radio("Vue", VUES, horizontal=True, key="nav_vue",
+                   label_visibility="collapsed")
+if not vue:
+    vue = "Synthèse générale"
 
 if vue == "Synthèse générale":
     render_synthese_generale(variantes, seuil_t1, seuil_t2, config, methode)
@@ -283,3 +356,6 @@ elif vue == "Focus zone":
 
 elif vue == "Comparaison zones":
     render_comparaison_zones(variantes, seuil_t1, seuil_t2, config, methode)
+
+elif vue == "Variantes":
+    render_description_variantes(variantes)
