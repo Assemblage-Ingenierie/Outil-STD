@@ -19,10 +19,15 @@ class Variante:
     df_synthese: pd.DataFrame    # 1 ligne par zone
     df_meteo: pd.DataFrame       # 8760 lignes météo
     zones: list[str] = field(default_factory=list)
-    meteo_nom: str = ""          # nom du fichier météo (pour comparaison/affichage)
+    meteo_nom: str = ""          # nom du fichier météo (identifiant)
+    meteo_label: str = ""        # libellé convivial (ex. "Climat actuel", "RCP 8.5")
 
     def a_meteo(self) -> bool:
         return self.df_meteo is not None and not self.df_meteo.empty
+
+    def meteo_affiche(self) -> str:
+        """Libellé météo à afficher : le label convivial sinon le nom de fichier."""
+        return self.meteo_label or self.meteo_nom or ""
 
     def __post_init__(self):
         if not self.zones and 'zones' in self.df_horaire.attrs:

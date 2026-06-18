@@ -48,7 +48,6 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     for var in variantes_sel:
         stats = var.stats_temp(zone)
         syn = var.synthese_zone(zone)
-        hr = var.col_hr(zone)
         rows.append({
             'Variante': var.nom,
             'Surface (m²)': round(syn['surface_m2'], 0) if syn and not np.isnan(syn.get('surface_m2', float('nan'))) else np.nan,
@@ -61,9 +60,8 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             f'H > {seuil_t2}°C': var.heures_dessus_seuil(zone, seuil_t2),
             f'% hors {lib} 0 m/s': var.pct_hors_confort(zone, config, 0.0, methode),
             f'% hors {lib} 1 m/s': var.pct_hors_confort(zone, config, 1.0, methode),
-            'HR moy (%)': round(float(hr.mean()), 1) if not hr.empty else np.nan,
             'Occupation (h/an)': var.heures_occupation(zone),
-            'Météo': var.meteo_nom or '—',
+            'Météo': var.meteo_affiche() or '—',
         })
     df_cmp = pd.DataFrame(rows).set_index('Variante')
     cols_pct = [c for c in df_cmp.columns if c.startswith('% hors')]
@@ -75,7 +73,6 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     st.dataframe(
         df_cmp.style.format({
             'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
-            'HR moy (%)': '{:.1f}',
             **{c: '{:.1f} %' for c in cols_pct},
         }, na_rep='NA')
         .background_gradient(subset=cols_pct, cmap='YlOrRd')
@@ -87,7 +84,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
                        file_name=f"focus_{zone}.csv", mime="text/csv", key="dl_focus")
 
     # Détection de météos différentes parmi les variantes sélectionnées
-    meteos = {v.meteo_nom for v in variantes_sel if v.a_meteo()}
+    meteos = {v.meteo_affiche() for v in variantes_sel if v.a_meteo()}
     meteos_differentes = len(meteos) > 1
     if meteos_differentes:
         st.info("ℹ️ Les variantes comparées utilisent des **fichiers météo différents** : "

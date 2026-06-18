@@ -57,7 +57,7 @@ def graphique_temp_horaire(
     for var in variantes:
         if var.df_meteo.empty:
             continue
-        nom = var.meteo_nom or "météo"
+        nom = var.meteo_affiche() or "météo"
         if nom in meteos_vus:
             continue
         meteos_vus[nom] = var
@@ -143,7 +143,7 @@ def graphique_text_vs_text_op(
             t_ext = var.df_meteo['T_ext'].values[:n]
             t_int = var.col_temp(zone).values[:n]
             color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
-            meteo = f" · {var.meteo_nom}" if var.meteo_nom else ""
+            meteo = f" · {var.meteo_affiche()}" if var.meteo_affiche() else ""
             fig.add_trace(go.Scatter(
                 x=t_ext, y=t_int, mode='markers',
                 marker=dict(size=3, color=color, opacity=0.4),
@@ -186,7 +186,7 @@ def graphique_meteo_comparaison(variantes) -> go.Figure:
     for var in variantes:
         if var.df_meteo.empty:
             continue
-        nom = var.meteo_nom or "météo"
+        nom = var.meteo_affiche() or "météo"
         if nom in vus:
             continue
         vus[nom] = True

@@ -55,6 +55,7 @@ def sauvegarder_projet(chemin: str | Path, etat: dict) -> Path:
         "variantes": variantes_ser,
         "ameliorations": etat.get("ameliorations"),
         "recap_vals": etat.get("recap_vals"),
+        "meteo_labels": etat.get("meteo_labels"),
         "descriptions": etat.get("descriptions"),  # rétro-compat anciens projets
         "selections": etat.get("selections", {}),
     }
@@ -99,6 +100,7 @@ def charger_projet(chemin: str | Path) -> dict:
         "variantes": variantes,
         "ameliorations": bundle.get("ameliorations"),
         "recap_vals": bundle.get("recap_vals"),
+        "meteo_labels": bundle.get("meteo_labels"),
         "descriptions": bundle.get("descriptions"),
         "selections": bundle.get("selections", {}),
     }

@@ -47,7 +47,6 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
     for zone in zones_sel:
         stats = var.stats_temp(zone)
         syn = var.synthese_zone(zone)
-        hr = var.col_hr(zone)
         rows.append({
             'Zone': zone,
             'Surface (m²)': round(syn['surface_m2'], 0) if syn and not np.isnan(syn.get('surface_m2', float('nan'))) else '',
@@ -60,7 +59,6 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
             f'H > {seuil_t2}°C': var.heures_dessus_seuil(zone, seuil_t2),
             f'% hors {lib} 0 m/s': var.pct_hors_confort(zone, config, 0.0, methode),
             f'% hors {lib} 1 m/s': var.pct_hors_confort(zone, config, 1.0, methode),
-            'HR moy (%)': round(float(hr.mean()), 1) if not hr.empty else '',
         })
 
     df_comp = pd.DataFrame(rows)

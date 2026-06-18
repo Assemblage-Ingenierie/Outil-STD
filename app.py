@@ -307,6 +307,25 @@ with st.sidebar:
                     vs.pop(i)
                     st.rerun()
 
+    # -- Renommer les fichiers météo (libellés conviviaux) --
+    if 'meteo_labels' not in st.session_state:
+        st.session_state['meteo_labels'] = {}
+    fichiers_meteo = sorted({v.meteo_nom for v in vs if v.meteo_nom})
+    if fichiers_meteo:
+        with st.expander("🌤️ Renommer les météos"):
+            st.caption("Libellé affiché dans les tableaux et graphiques "
+                       "(ex. « Climat actuel », « RCP 8.5 »).")
+            for f in fichiers_meteo:
+                lbl = st.text_input(
+                    f, value=st.session_state['meteo_labels'].get(f, ''),
+                    key=f"meteolbl_{f}", placeholder=f)
+                st.session_state['meteo_labels'][f] = lbl.strip()
+
+    # Appliquer les libellés à toutes les variantes (tableaux/graphiques/rapport)
+    _labels = st.session_state.get('meteo_labels', {})
+    for v in vs:
+        v.meteo_label = _labels.get(v.meteo_nom, '')
+
     st.markdown("---")
 
     # -- Projet : enregistrer / ouvrir --
@@ -332,6 +351,7 @@ with st.sidebar:
                             'variantes': st.session_state.variantes,
                             'ameliorations': st.session_state.get('ameliorations'),
                             'recap_vals': st.session_state.get('recap_vals'),
+                            'meteo_labels': st.session_state.get('meteo_labels'),
                             'selections': {k: v for k, v in st.session_state.items()
                                            if k.startswith('sel_')},
                         }
@@ -352,6 +372,8 @@ with st.sidebar:
                         st.session_state['ameliorations'] = charge['ameliorations']
                     if charge.get('recap_vals') is not None:
                         st.session_state['recap_vals'] = charge['recap_vals']
+                    if charge.get('meteo_labels') is not None:
+                        st.session_state['meteo_labels'] = charge['meteo_labels']
                     # Forcer les éditeurs de la page Variantes à reprendre les données chargées
                     for k in ('desc_base', 'recap_base', '_recap_sig', 'ed_desc', 'ed_recap'):
                         st.session_state.pop(k, None)
