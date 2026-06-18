@@ -19,6 +19,10 @@ class Variante:
     df_synthese: pd.DataFrame    # 1 ligne par zone
     df_meteo: pd.DataFrame       # 8760 lignes météo
     zones: list[str] = field(default_factory=list)
+    meteo_nom: str = ""          # nom du fichier météo (pour comparaison/affichage)
+
+    def a_meteo(self) -> bool:
+        return self.df_meteo is not None and not self.df_meteo.empty
 
     def __post_init__(self):
         if not self.zones and 'zones' in self.df_horaire.attrs:
@@ -330,9 +334,12 @@ def charger_variante(
     """Charge et assemble une variante depuis ses fichiers (météo optionnelle)."""
     df_h = parse_resultats(fichier_resultats)
     df_s = parse_synthese(fichier_synthese)
+    meteo_nom = ""
     if fichier_meteo and Path(fichier_meteo).exists():
         df_m = parse_try(fichier_meteo)
+        meteo_nom = Path(fichier_meteo).name
     else:
         df_m = pd.DataFrame(columns=['T_ext', 'HR_ext', 'DNI', 'DHI', 'w_ext'])
     zones = df_h.attrs.get('zones', [])
-    return Variante(nom=nom, df_horaire=df_h, df_synthese=df_s, df_meteo=df_m, zones=zones)
+    return Variante(nom=nom, df_horaire=df_h, df_synthese=df_s, df_meteo=df_m,
+                    zones=zones, meteo_nom=meteo_nom)

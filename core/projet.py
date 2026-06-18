@@ -42,6 +42,7 @@ def sauvegarder_projet(chemin: str | Path, etat: dict) -> Path:
         variantes_ser.append({
             "nom": v.nom,
             "zones": list(v.zones),
+            "meteo_nom": getattr(v, "meteo_nom", ""),
             "df_horaire": v.df_horaire,
             "df_synthese": v.df_synthese,
             "df_meteo": v.df_meteo,
@@ -86,6 +87,7 @@ def charger_projet(chemin: str | Path) -> dict:
             df_synthese=vs["df_synthese"],
             df_meteo=vs["df_meteo"],
             zones=vs.get("zones", []),
+            meteo_nom=vs.get("meteo_nom", ""),
         ))
 
     return {

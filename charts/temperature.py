@@ -52,20 +52,29 @@ def graphique_temp_horaire(
             hovertemplate='%{x|%d %b %H:%M}<br>T=%{y:.1f}°C<extra>' + var.nom + '</extra>',
         ))
 
-    # Température extérieure (depuis première variante avec méteo)
+    # Température(s) extérieure(s) : une courbe par fichier météo distinct
+    meteos_vus = {}
     for var in variantes:
-        if not var.df_meteo.empty:
-            t_ext = var.df_meteo['T_ext'].values
-            n = min(len(t_ext), len(var.df_horaire))
-            x = _serie_vers_horodate(var.df_horaire)
-            fig.add_trace(go.Scatter(
-                x=x[:n], y=t_ext[:n],
-                mode='lines',
-                name='T extérieure',
-                line=dict(color=LIGNE_EXT, width=1.3, dash='dot'),
-                hovertemplate='%{x|%d %b %H:%M}<br>T_ext=%{y:.1f}°C<extra>Extérieur</extra>',
-            ))
-            break
+        if var.df_meteo.empty:
+            continue
+        nom = var.meteo_nom or "météo"
+        if nom in meteos_vus:
+            continue
+        meteos_vus[nom] = var
+    multi = len(meteos_vus) > 1
+    teintes_ext = [LIGNE_EXT, "#78909C", "#90A4AE", "#B0BEC5"]
+    for j, (nom, var) in enumerate(meteos_vus.items()):
+        t_ext = var.df_meteo['T_ext'].values
+        n = min(len(t_ext), len(var.df_horaire))
+        x = _serie_vers_horodate(var.df_horaire)
+        label = f'T ext — {nom}' if multi else 'T extérieure'
+        fig.add_trace(go.Scatter(
+            x=x[:n], y=t_ext[:n],
+            mode='lines',
+            name=label,
+            line=dict(color=teintes_ext[j % len(teintes_ext)], width=1.3, dash='dot'),
+            hovertemplate='%{x|%d %b %H:%M}<br>T_ext=%{y:.1f}°C<extra>' + label + '</extra>',
+        ))
 
     # Seuils
     if seuil_t1:
@@ -89,47 +98,68 @@ def graphique_temp_horaire(
 
 
 def graphique_text_vs_text_op(
-    variante,
+    variantes,
     zone: str,
     titre: str | None = None,
 ) -> go.Figure:
-    """Nuage de points T_op intérieure vs T extérieure."""
-    s_int = variante.col_temp(zone)
-    if s_int.empty or variante.df_meteo.empty:
+    """
+    Nuage de points T° opérative intérieure vs T° extérieure.
+    - 1 variante : coloration par saison.
+    - plusieurs variantes : une couleur par variante (chacune avec sa propre
+      météo), avec le fichier météo en étiquette/survol.
+    """
+    if not isinstance(variantes, (list, tuple)):
+        variantes = [variantes]
+    variantes = [v for v in variantes if not v.col_temp(zone).empty and not v.df_meteo.empty]
+    if not variantes:
         return go.Figure()
 
-    n = min(len(s_int), len(variante.df_meteo))
-    t_ext = variante.df_meteo['T_ext'].values[:n]
-    t_int = s_int.values[:n]
-
-    # Colorer par saison (couleurs lisibles sur fond blanc)
-    saison = variante.df_horaire['saison'].values[:n]
-    couleurs_saison = {'Refroidissement': '#2196F3', 'Chauffage': ROUGE, '': '#757575'}
-
     fig = go.Figure()
+    all_x, all_y = [], []
 
-    for saison_nom, color in couleurs_saison.items():
-        mask = saison == saison_nom
-        if not any(mask):
-            continue
-        label = saison_nom if saison_nom else 'Inter-saison'
-        fig.add_trace(go.Scatter(
-            x=t_ext[mask], y=t_int[mask],
-            mode='markers',
-            marker=dict(size=3, color=color, opacity=0.4),
-            name=label,
-            hovertemplate='T_ext=%{x:.1f}°C<br>T_int=%{y:.1f}°C<extra>' + label + '</extra>',
-        ))
+    if len(variantes) == 1:
+        var = variantes[0]
+        n = min(len(var.col_temp(zone)), len(var.df_meteo))
+        t_ext = var.df_meteo['T_ext'].values[:n]
+        t_int = var.col_temp(zone).values[:n]
+        saison = var.df_horaire['saison'].values[:n]
+        couleurs_saison = {'Refroidissement': '#2196F3', 'Chauffage': ROUGE, '': '#757575'}
+        for saison_nom, color in couleurs_saison.items():
+            mask = saison == saison_nom
+            if not any(mask):
+                continue
+            label = saison_nom if saison_nom else 'Inter-saison'
+            fig.add_trace(go.Scatter(
+                x=t_ext[mask], y=t_int[mask], mode='markers',
+                marker=dict(size=3, color=color, opacity=0.4), name=label,
+                hovertemplate='T_ext=%{x:.1f}°C<br>T_int=%{y:.1f}°C<extra>' + label + '</extra>',
+            ))
+        all_x, all_y = list(t_ext), list(t_int)
+    else:
+        for i, var in enumerate(variantes):
+            n = min(len(var.col_temp(zone)), len(var.df_meteo))
+            t_ext = var.df_meteo['T_ext'].values[:n]
+            t_int = var.col_temp(zone).values[:n]
+            color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
+            meteo = f" · {var.meteo_nom}" if var.meteo_nom else ""
+            fig.add_trace(go.Scatter(
+                x=t_ext, y=t_int, mode='markers',
+                marker=dict(size=3, color=color, opacity=0.4),
+                name=f"{var.nom}{meteo}",
+                hovertemplate='T_ext=%{x:.1f}°C<br>T_int=%{y:.1f}°C<extra>' + var.nom + meteo + '</extra>',
+            ))
+            all_x += list(t_ext)
+            all_y += list(t_int)
 
     # Ligne diagonale (T_int = T_ext)
-    t_range = [min(t_ext.min(), t_int.min()) - 2, max(t_ext.max(), t_int.max()) + 2]
-    fig.add_trace(go.Scatter(
-        x=t_range, y=t_range,
-        mode='lines',
-        line=dict(color=VIOLET, width=1.5, dash='dash'),
-        name='T_int = T_ext',
-        hoverinfo='skip',
-    ))
+    if all_x:
+        lo = min(min(all_x), min(all_y)) - 2
+        hi = max(max(all_x), max(all_y)) + 2
+        fig.add_trace(go.Scatter(
+            x=[lo, hi], y=[lo, hi], mode='lines',
+            line=dict(color=VIOLET, width=1.5, dash='dash'),
+            name='T_int = T_ext', hoverinfo='skip',
+        ))
 
     layout = dict(PLOTLY_LAYOUT)
     layout.update(
@@ -137,6 +167,44 @@ def graphique_text_vs_text_op(
         xaxis=dict(title='T extérieure (°C)', gridcolor=GRILLE),
         yaxis=dict(title='T opérative intérieure (°C)', gridcolor=GRILLE),
         height=420,
+    )
+    fig.update_layout(**layout)
+    return fig
+
+
+def graphique_meteo_comparaison(variantes) -> go.Figure:
+    """
+    Comparaison des fichiers météo : température extérieure moyenne mensuelle
+    pour chaque météo distincte parmi les variantes. Une courbe par météo.
+    """
+    fig = go.Figure()
+    jours_mois = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    vus = {}
+    idx = 0
+    for var in variantes:
+        if var.df_meteo.empty:
+            continue
+        nom = var.meteo_nom or "météo"
+        if nom in vus:
+            continue
+        vus[nom] = True
+        t = var.df_meteo['T_ext'].values
+        n = len(t)
+        mois = np.repeat(range(1, 13), [d * 24 for d in jours_mois])[:n]
+        df = pd.DataFrame({'mois': mois, 't': t[:len(mois)]})
+        moy = df.groupby('mois')['t'].mean()
+        color = COULEURS_VARIANTES[idx % len(COULEURS_VARIANTES)]
+        idx += 1
+        fig.add_trace(go.Scatter(
+            x=[NOMS_MOIS[int(m) - 1] for m in moy.index], y=moy.values,
+            mode='lines+markers', name=nom, line=dict(color=color, width=2),
+        ))
+
+    layout = dict(PLOTLY_LAYOUT)
+    layout.update(
+        title="Comparaison des fichiers météo — T° extérieure moyenne mensuelle",
+        xaxis=dict(title='Mois'), yaxis=dict(title='T extérieure (°C)', gridcolor=GRILLE),
+        height=380,
     )
     fig.update_layout(**layout)
     return fig

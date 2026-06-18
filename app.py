@@ -152,6 +152,26 @@ with st.sidebar:
         st.caption("Zones COCO : standard tropical (non éditable).")
 
     st.markdown("---")
+    st.markdown("### Météo par défaut du projet")
+    if 'meteo_projet' not in st.session_state:
+        st.session_state['meteo_projet'] = ''
+    if st.button("📂 Définir la météo par défaut (.try)", key="btn_meteo_projet",
+                 use_container_width=True):
+        chemin = choisir_fichier("Météo par défaut du projet",
+                                 [("Fichiers météo", "*.try"), ("Tous", "*.*")])
+        if chemin:
+            st.session_state['meteo_projet'] = chemin
+    if st.session_state['meteo_projet']:
+        cmp1, cmp2 = st.columns([4, 1])
+        cmp1.caption(f"🌤️ {Path(st.session_state['meteo_projet']).name}")
+        if cmp2.button("✕", key="clear_meteo_projet", help="Retirer la météo par défaut"):
+            st.session_state['meteo_projet'] = ''
+            st.rerun()
+    else:
+        st.caption("Aucune — sera demandée par variante.")
+    st.caption("Pré-remplie pour chaque nouvelle variante ; surchargeable individuellement.")
+
+    st.markdown("---")
     st.markdown("### Variantes")
 
     # Stockage des chemins sélectionnés via le sélecteur natif
@@ -182,18 +202,28 @@ with st.sidebar:
         if st.session_state.sel_synthese:
             st.caption(f"✓ {Path(st.session_state.sel_synthese).name}")
 
-        # --- Météo (optionnel) ---
-        if st.button("📂 Météo (.try) — optionnel", key="btn_pick_meteo", use_container_width=True):
-            chemin = choisir_fichier("Sélectionner le fichier météo",
+        # --- Météo : par défaut = météo projet, surchargeable ---
+        meteo_projet = st.session_state.get('meteo_projet', '')
+        if st.button("📂 Météo spécifique (.try)", key="btn_pick_meteo", use_container_width=True):
+            chemin = choisir_fichier("Météo spécifique à cette variante",
                                      [("Fichiers météo", "*.try"), ("Tous", "*.*")])
             if chemin:
                 st.session_state.sel_meteo = chemin
         if st.session_state.sel_meteo:
-            st.caption(f"✓ {Path(st.session_state.sel_meteo).name}")
+            mc1, mc2 = st.columns([4, 1])
+            mc1.caption(f"✓ {Path(st.session_state.sel_meteo).name} (spécifique)")
+            if mc2.button("↺", key="reset_meteo_var", help="Revenir à la météo du projet"):
+                st.session_state.sel_meteo = ''
+                st.rerun()
+        elif meteo_projet:
+            st.caption(f"✓ {Path(meteo_projet).name} (météo projet)")
+        else:
+            st.caption("Aucune météo — Givoni/confort indisponibles.")
 
         path_r_input = st.session_state.sel_resultats
         path_s_input = st.session_state.sel_synthese
-        path_m_input = st.session_state.sel_meteo
+        # Override spécifique sinon météo projet
+        path_m_input = st.session_state.sel_meteo or meteo_projet
 
         if st.button("Charger la variante", key="btn_charger", type="primary"):
             if not path_r_input or not path_s_input:

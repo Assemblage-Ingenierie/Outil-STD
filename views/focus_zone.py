@@ -15,6 +15,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
         graphique_temp_horaire,
         graphique_text_vs_text_op,
         graphique_apports_solaires,
+        graphique_meteo_comparaison,
         _serie_vers_horodate,
     )
     from charts.givoni import creer_givoni
@@ -62,6 +63,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             f'% hors {lib} 1 m/s': var.pct_hors_confort(zone, config, 1.0, methode),
             'HR moy (%)': round(float(hr.mean()), 1) if not hr.empty else np.nan,
             'Occupation (h/an)': var.heures_occupation(zone),
+            'Météo': var.meteo_nom or '—',
         })
     df_cmp = pd.DataFrame(rows).set_index('Variante')
     cols_pct = [c for c in df_cmp.columns if c.startswith('% hors')]
@@ -84,6 +86,13 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     st.download_button("⬇️ Exporter le comparatif (CSV)", data=csv,
                        file_name=f"focus_{zone}.csv", mime="text/csv", key="dl_focus")
 
+    # Détection de météos différentes parmi les variantes sélectionnées
+    meteos = {v.meteo_nom for v in variantes_sel if v.a_meteo()}
+    meteos_differentes = len(meteos) > 1
+    if meteos_differentes:
+        st.info("ℹ️ Les variantes comparées utilisent des **fichiers météo différents** : "
+                + ", ".join(sorted(meteos)) + ". Les graphiques bâtiment/météo intègrent cette différence.")
+
     st.divider()
 
     # -- Série temporelle température --
@@ -91,13 +100,17 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     fig_temp = graphique_temp_horaire(variantes_sel, zone, seuil_t1, seuil_t2)
     st.plotly_chart(fig_temp, use_container_width=True)
 
-    # -- T_op vs T_ext --
+    # -- T_op vs T_ext (toutes les variantes sélectionnées, chacune sa météo) --
     st.subheader("Température opérative vs Température extérieure")
-    var_op = persist_selectbox("Variante pour ce graphique",
-                               [v.nom for v in variantes_sel], "sel_focus_var_op")
-    var_sel = next(v for v in variantes_sel if v.nom == var_op)
-    fig_op = graphique_text_vs_text_op(var_sel, zone)
+    fig_op = graphique_text_vs_text_op(variantes_sel, zone)
     st.plotly_chart(fig_op, use_container_width=True)
+    if len(variantes_sel) == 1:
+        st.caption("Coloration par saison. Sélectionnez plusieurs variantes pour les comparer.")
+
+    # -- Comparaison des fichiers météo (si différents) --
+    if meteos_differentes:
+        st.subheader("Comparaison des fichiers météo")
+        st.plotly_chart(graphique_meteo_comparaison(variantes_sel), use_container_width=True)
 
     # -- Diagramme bioclimatique (Givoni / COCO) — conditions INTÉRIEURES --
     nom_modele = "COCO" if methode == "coco" else "Givoni"
