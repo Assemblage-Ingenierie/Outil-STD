@@ -97,6 +97,22 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #B0040F; }
 
+    /* Bouton bascule du panneau d'ajout : flèche fine, sans fond */
+    .st-key-toggle_form_ajout button {
+        background: transparent !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        padding: 0 !important;
+        min-height: 1.4rem !important;
+        line-height: 1 !important;
+        font-size: 1.1rem !important;
+        box-shadow: none !important;
+    }
+    .st-key-toggle_form_ajout button:hover {
+        background: transparent !important;
+        color: #E30513 !important;
+    }
+
     .metric-card {
         background: #F2F2F2;
         border-left: 4px solid #E30513;
@@ -211,8 +227,9 @@ with st.sidebar:
     if 'form_ajout' not in st.session_state:
         st.session_state['form_ajout'] = (len(st.session_state.variantes) == 0)
 
-    label_btn = "▲ Fermer l'ajout" if st.session_state['form_ajout'] else "➕ Ajouter une variante"
-    if st.button(label_btn, key="toggle_form_ajout", use_container_width=True):
+    fleche = "⌃" if st.session_state['form_ajout'] else "⌄"
+    if st.button(fleche, key="toggle_form_ajout",
+                 help="Fermer l'ajout" if st.session_state['form_ajout'] else "Ajouter une variante"):
         st.session_state['form_ajout'] = not st.session_state['form_ajout']
         st.rerun()
 
