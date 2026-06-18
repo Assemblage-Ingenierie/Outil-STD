@@ -227,16 +227,28 @@ with st.sidebar:
                     except Exception as e:
                         st.error(f"Erreur : {e}")
 
-    # Liste des variantes chargées
-    if st.session_state.variantes:
-        st.markdown("**Variantes chargées :**")
-        for i, var in enumerate(st.session_state.variantes):
-            col_a, col_b = st.columns([3, 1])
-            with col_a:
+    # Liste des variantes chargées (réordonnables ↑/↓ — l'ordre s'applique
+    # à tous les tableaux et graphiques)
+    vs = st.session_state.variantes
+    if vs:
+        st.markdown("**Variantes chargées** (↑/↓ pour réordonner) :")
+        for i, var in enumerate(vs):
+            c_nom, c_up, c_down, c_del = st.columns([5, 1, 1, 1])
+            with c_nom:
                 st.markdown(f"• {var.nom} ({len(var.zones)} zones)")
-            with col_b:
-                if st.button("✕", key=f"del_var_{i}"):
-                    st.session_state.variantes.pop(i)
+            with c_up:
+                if st.button("↑", key=f"up_var_{i}", disabled=(i == 0),
+                             help="Monter"):
+                    vs[i - 1], vs[i] = vs[i], vs[i - 1]
+                    st.rerun()
+            with c_down:
+                if st.button("↓", key=f"down_var_{i}", disabled=(i == len(vs) - 1),
+                             help="Descendre"):
+                    vs[i + 1], vs[i] = vs[i], vs[i + 1]
+                    st.rerun()
+            with c_del:
+                if st.button("✕", key=f"del_var_{i}", help="Retirer"):
+                    vs.pop(i)
                     st.rerun()
 
     st.markdown("---")
