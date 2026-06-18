@@ -21,9 +21,26 @@ class Variante:
     zones: list[str] = field(default_factory=list)
     meteo_nom: str = ""          # nom du fichier météo (identifiant)
     meteo_label: str = ""        # libellé convivial (ex. "Climat actuel", "RCP 8.5")
+    periode: tuple | None = None  # (mois_debut, mois_fin) ; None = année entière
 
     def a_meteo(self) -> bool:
         return self.df_meteo is not None and not self.df_meteo.empty
+
+    def masque_periode(self, n: int | None = None):
+        """
+        Masque booléen des heures appartenant à la période d'analyse active
+        (self.periode). None = année entière. Gère les périodes à cheval sur
+        l'année (ex. (11, 4) = novembre→avril).
+        """
+        mois = self.df_horaire['mois'].values
+        if n is not None:
+            mois = mois[:n]
+        if not self.periode:
+            return np.ones(len(mois), dtype=bool)
+        m1, m2 = self.periode
+        if m1 <= m2:
+            return (mois >= m1) & (mois <= m2)
+        return (mois >= m1) | (mois <= m2)   # période à cheval sur l'année
 
     def meteo_affiche(self) -> str:
         """Libellé météo à afficher : le label convivial sinon le nom de fichier."""
@@ -106,7 +123,10 @@ class Variante:
             s = self.col_apports_sol(zone)
         if s.empty:
             return pd.Series(dtype=float)
-        df = pd.DataFrame({"mois": self.df_horaire["mois"].values[:len(s)], "val": s.values})
+        n = len(s)
+        mask = self.masque_periode(n)
+        df = pd.DataFrame({"mois": self.df_horaire["mois"].values[:n], "val": s.values})
+        df = df[mask]
         # W horaires → kWh (× 1h, ÷ 1000)
         return df.groupby("mois")["val"].sum() / 1000.0
 
@@ -118,16 +138,22 @@ class Variante:
         s = self.col_temp(zone)
         if s.empty:
             return 0
-        return int((s > seuil).sum())
+        v = s.values
+        v = v[self.masque_periode(len(v))]
+        return int((v > seuil).sum())
 
     def stats_temp(self, zone: str) -> dict:
         s = self.col_temp(zone)
         if s.empty:
             return {'t_min': np.nan, 't_moy': np.nan, 't_max': np.nan}
+        v = s.values
+        v = v[self.masque_periode(len(v))]
+        if v.size == 0:
+            return {'t_min': np.nan, 't_moy': np.nan, 't_max': np.nan}
         return {
-            't_min': float(s.min()),
-            't_moy': float(s.mean()),
-            't_max': float(s.max()),
+            't_min': float(v.min()),
+            't_moy': float(v.mean()),
+            't_max': float(v.max()),
         }
 
     def heures_hors_confort(self, zone: str, config: dict, vitesse: float,
@@ -156,7 +182,7 @@ class Variante:
         if t.empty or occ.empty:
             return np.nan
         n = min(len(t), len(occ))
-        occupe = occ.values[:n] > 0
+        occupe = (occ.values[:n] > 0) & self.masque_periode(n)
         if not occupe.any():
             return np.nan
         ecarts = np.maximum(0.0, t.values[:n][occupe] - seuil)
@@ -184,7 +210,8 @@ class Variante:
         occ = self.col_apports_occupants(zone)
         if occ.empty:
             return 0
-        return int((occ.values > 0).sum())
+        v = occ.values
+        return int(((v > 0) & self.masque_periode(len(v))).sum())
 
     def pct_hors_confort(self, zone: str, config: dict, vitesse: float,
                          methode: str = "givoni") -> float:
@@ -214,7 +241,7 @@ class Variante:
         if t.empty or w.empty or occ.empty:
             return 0, 0
         n = min(len(t), len(w), len(occ))
-        occupe = occ.values[:n] > 0
+        occupe = (occ.values[:n] > 0) & self.masque_periode(n)
         n_occ = int(occupe.sum())
         if n_occ == 0:
             return 0, 0
@@ -252,7 +279,7 @@ class Variante:
         W = w.values[:n]
         saison = self.df_horaire['saison'].values[:n] if 'saison' in self.df_horaire else np.array([''] * n)
         exempt = confort.masque_chauffe_sous_consigne(T, self._est_chauffe(zone, n), config, methode)
-        garde = ~exempt
+        garde = (~exempt) & self.masque_periode(n)
         return {'T': T[garde], 'w': W[garde], 'saison': np.asarray(saison)[garde]}
 
     def synthese_zone(self, zone: str) -> dict | None:

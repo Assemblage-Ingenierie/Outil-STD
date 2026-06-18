@@ -94,6 +94,31 @@ def render_reglages():
         else:
             st.caption("Zones COCO : standard tropical (non éditable).")
 
+        st.subheader("Période d'analyse")
+        periodes = {
+            "Année entière": None,
+            "Été (mai → octobre)": (5, 10),
+            "Hiver (nov → avril)": (11, 4),
+            "Personnalisée": "custom",
+        }
+        choix = persist_radio("Centrer les analyses sur", list(periodes.keys()),
+                              "cfg_periode_label", default="Année entière",
+                              help="Restreint tous les indicateurs et graphiques à la période choisie.")
+        val = periodes[choix]
+        if val == "custom":
+            mois_noms = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet',
+                         'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                m1 = persist_number("Mois de début", "cfg_per_m1", 1.0, step=1.0, min_value=1.0, max_value=12.0)
+            with cc2:
+                m2 = persist_number("Mois de fin", "cfg_per_m2", 12.0, step=1.0, min_value=1.0, max_value=12.0)
+            ss['cfg_periode'] = (int(m1), int(m2))
+            st.caption(f"De {mois_noms[int(m1)-1]} à {mois_noms[int(m2)-1]}"
+                       + (" (à cheval sur l'année)" if int(m1) > int(m2) else ""))
+        else:
+            ss['cfg_periode'] = val
+
     # ==================================================================
     # Colonne droite : météo, ajout de variante
     # ==================================================================

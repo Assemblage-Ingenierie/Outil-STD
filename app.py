@@ -87,13 +87,16 @@ st.session_state.setdefault('cfg_seuil_t1', 26.0)
 st.session_state.setdefault('cfg_seuil_t2', 28.0)
 st.session_state.setdefault('cfg_methode', 'givoni')
 st.session_state.setdefault('cfg_dh_on', False)
+st.session_state.setdefault('cfg_periode', None)
 st.session_state.setdefault('cfg_nom_projet',
                             st.session_state.config_projet.get('projet', {}).get('nom', ''))
 
-# Appliquer les libellés météo aux variantes (tableaux/graphiques/rapport)
+# Appliquer libellés météo + période d'analyse aux variantes
 _labels = st.session_state.get('meteo_labels', {})
+_periode = st.session_state.get('cfg_periode', None)
 for _v in st.session_state.variantes:
     _v.meteo_label = _labels.get(_v.meteo_nom, '')
+    _v.periode = _periode
 
 
 # ============================================================
@@ -152,6 +155,8 @@ with st.sidebar:
                             'params': {'seuil_t1': st.session_state.get('cfg_seuil_t1'),
                                        'seuil_t2': st.session_state.get('cfg_seuil_t2'),
                                        'methode': st.session_state.get('cfg_methode'),
+                                       'periode': st.session_state.get('cfg_periode'),
+                                       'periode_label': st.session_state.get('cfg_periode_label'),
                                        'config': st.session_state.config_projet},
                             'variantes': st.session_state.variantes,
                             'ameliorations': st.session_state.get('ameliorations'),
@@ -181,6 +186,10 @@ with st.sidebar:
                         st.session_state['cfg_seuil_t2'] = prm['seuil_t2']
                     if prm.get('methode'):
                         st.session_state['cfg_methode'] = prm['methode']
+                    if 'periode' in prm:
+                        st.session_state['cfg_periode'] = prm['periode']
+                    if prm.get('periode_label'):
+                        st.session_state['cfg_periode_label'] = prm['periode_label']
                     st.session_state['cfg_nom_projet'] = charge.get('nom_projet', '')
                     if charge.get('ameliorations') is not None:
                         st.session_state['ameliorations'] = charge['ameliorations']
@@ -191,7 +200,7 @@ with st.sidebar:
                     # Réinitialiser les widgets dont la base dépend des données chargées
                     for k in ('desc_base', 'recap_base', '_recap_sig', 'ed_desc', 'ed_recap',
                               'cfg_nom_projet_w', 'cfg_seuil_t1_w', 'cfg_seuil_t2_w',
-                              'cfg_methode_label_w'):
+                              'cfg_methode_label_w', 'cfg_periode_label_w'):
                         st.session_state.pop(k, None)
                     for k, v in (charge.get('selections') or {}).items():
                         st.session_state[k] = v
@@ -219,6 +228,11 @@ else:
     vue = st.radio("Vue", VUES, horizontal=True, key="nav_vue", label_visibility="collapsed")
 if not vue:
     vue = "Synthèse générale"
+
+# Bandeau d'info sur la période d'analyse active (sauf année entière)
+if st.session_state.get('cfg_periode') and vue in ("Synthèse générale", "Focus zone", "Comparaison zones"):
+    st.info(f"📅 Analyses centrées sur : **{st.session_state.get('cfg_periode_label', '')}** "
+            "(modifiable dans l'onglet Réglages).")
 
 if vue == "Synthèse générale":
     render_synthese_generale(variantes, seuil_t1, seuil_t2, config, methode, dh_on)

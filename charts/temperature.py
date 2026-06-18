@@ -43,9 +43,10 @@ def graphique_temp_horaire(
         if s.empty:
             continue
         x = _serie_vers_horodate(var.df_horaire)
+        m = var.masque_periode(len(s))
         color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
         fig.add_trace(go.Scatter(
-            x=x, y=s.values,
+            x=np.asarray(x)[m], y=s.values[m],
             mode='lines',
             name=var.nom,
             line=dict(color=color, width=1),
@@ -69,9 +70,10 @@ def graphique_temp_horaire(
         t_ext = var.df_meteo['T_ext'].values
         n = min(len(t_ext), len(var.df_horaire))
         x = _serie_vers_horodate(var.df_horaire)
+        m = var.masque_periode(n)
         label = f'T ext — {nom}' if multi else 'T extérieure'
         fig.add_trace(go.Scatter(
-            x=x[:n], y=t_ext[:n],
+            x=np.asarray(x[:n])[m], y=t_ext[:n][m],
             mode='lines',
             name=label,
             line=dict(color=teintes_ext[j % len(teintes_ext)], width=1.3, dash='dot'),
@@ -122,9 +124,10 @@ def graphique_text_vs_text_op(
     if len(variantes) == 1:
         var = variantes[0]
         n = min(len(var.col_temp(zone)), len(var.df_meteo))
-        t_ext = var.df_meteo['T_ext'].values[:n]
-        t_int = var.col_temp(zone).values[:n]
-        saison = var.df_horaire['saison'].values[:n]
+        mp = var.masque_periode(n)
+        t_ext = var.df_meteo['T_ext'].values[:n][mp]
+        t_int = var.col_temp(zone).values[:n][mp]
+        saison = var.df_horaire['saison'].values[:n][mp]
         couleurs_saison = {'Refroidissement': '#2196F3', 'Chauffage': ROUGE, '': '#757575'}
         for saison_nom, color in couleurs_saison.items():
             mask = saison == saison_nom
@@ -140,8 +143,9 @@ def graphique_text_vs_text_op(
     else:
         for i, var in enumerate(variantes):
             n = min(len(var.col_temp(zone)), len(var.df_meteo))
-            t_ext = var.df_meteo['T_ext'].values[:n]
-            t_int = var.col_temp(zone).values[:n]
+            mp = var.masque_periode(n)
+            t_ext = var.df_meteo['T_ext'].values[:n][mp]
+            t_int = var.col_temp(zone).values[:n][mp]
             color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
             meteo = f" · {var.meteo_affiche()}" if var.meteo_affiche() else ""
             fig.add_trace(go.Scatter(
