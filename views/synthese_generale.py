@@ -38,21 +38,24 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
         cols_pct = {c: '{:.1f} %' for c in cols_pct_list}
 
         def _style_na(col):
-            return ['color:#9E9E9E; font-style:italic' if v != v else '' for v in col]
+            # Cellules non applicables (local non occupé) : fond neutre, texte gris
+            return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
+                    if v != v else '' for v in col]
 
         st.dataframe(
             df_table.style
                 .format({
                     'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
                     **cols_pct,
-                }, na_rep='—')
+                }, na_rep='NA')
                 .background_gradient(subset=cols_couleur, cmap='YlOrRd')
                 .apply(_style_na, subset=cols_pct_list),
             use_container_width=True,
             height=min(600, 60 + 35 * len(df_table)),
         )
         st.caption("« % hors » = part des heures d'occupation hors zone de confort "
-                   "(occupation déduite des apports d'occupants). « — » : local non occupé.")
+                   "(occupation déduite des apports d'occupants). "
+                   "« NA » : non évaluable (local non occupé, ou export sans humidité/occupation).")
 
         csv = df_table.to_csv(index=False).encode('utf-8-sig')
         st.download_button(

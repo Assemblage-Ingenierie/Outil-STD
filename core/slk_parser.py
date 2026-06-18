@@ -89,11 +89,31 @@ def parse_resultats(filepath: str | Path) -> pd.DataFrame:
     types_col = {col: val for (row, col), val in headers.items() if row == 1}
     zones_col = {col: val for (row, col), val in headers.items() if row == 2}
 
-    # 2. Identifier les colonnes globales
-    # Col 1=mois, 2=jour, 3=heure, 4=T_ext, 5=theta_rm, 6=saison
-    cols_globales = {1, 2, 3, 4, 5, 6}
+    # 2. Identifier les colonnes globales PAR NOM (la structure varie selon
+    #    le paramétrage Pléiades : certains exports n'ont pas Theta rm / Saison,
+    #    auquel cas les températures de zones commencent dès la colonne 5).
+    #    Col 1=mois, 2=jour, 3=heure sont fixes ; les autres globales sont
+    #    repérées par leur libellé Y1 unique.
+    GLOBALES_NOMS = {
+        "Températures": "T_ext",
+        "Température extérieure": "T_ext",
+        "Theta rm": "theta_rm",
+        "Saison": "saison",
+    }
+    cols_globales = {1, 2, 3}            # mois, jour, heure
+    col_par_global: dict[str, int] = {}  # ex. {'T_ext': 4, 'theta_rm': 5, ...}
+    for col, type_name in types_col.items():
+        if col in (1, 2, 3):
+            continue
+        nom = str(type_name).strip()
+        if nom in GLOBALES_NOMS:
+            cles = GLOBALES_NOMS[nom]
+            # ne prendre que la PREMIÈRE occurrence comme globale
+            if cles not in col_par_global:
+                col_par_global[cles] = col
+                cols_globales.add(col)
 
-    # 3. Construire le mapping type → liste de (col, zone)
+    # 3. Construire le mapping type → liste de (col, zone) (hors globales)
     groupes: dict[str, list[tuple[int, str]]] = {}
     for col, type_name in types_col.items():
         if col in cols_globales:
@@ -126,14 +146,17 @@ def parse_resultats(filepath: str | Path) -> pd.DataFrame:
     n_rows = max_row - 2  # lignes 3 à max_row
 
     # 7. Construire le DataFrame
-    # Colonnes globales
+    # Colonnes globales (positions détectées par nom ; valeurs par défaut si absentes)
+    c_text  = col_par_global.get('T_ext')
+    c_theta = col_par_global.get('theta_rm')
+    c_sais  = col_par_global.get('saison')
     data = {
         'mois':    [toutes_cellules.get((r+3, 1), np.nan) for r in range(n_rows)],
         'jour':    [toutes_cellules.get((r+3, 2), np.nan) for r in range(n_rows)],
         'heure':   [toutes_cellules.get((r+3, 3), np.nan) for r in range(n_rows)],
-        'T_ext':   [toutes_cellules.get((r+3, 4), np.nan) for r in range(n_rows)],
-        'theta_rm':[toutes_cellules.get((r+3, 5), np.nan) for r in range(n_rows)],
-        'saison':  [toutes_cellules.get((r+3, 6), '') for r in range(n_rows)],
+        'T_ext':   [toutes_cellules.get((r+3, c_text), np.nan) if c_text else np.nan for r in range(n_rows)],
+        'theta_rm':[toutes_cellules.get((r+3, c_theta), np.nan) if c_theta else np.nan for r in range(n_rows)],
+        'saison':  [toutes_cellules.get((r+3, c_sais), '') if c_sais else '' for r in range(n_rows)],
     }
 
     # Colonnes par groupe/zone

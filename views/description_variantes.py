@@ -54,13 +54,18 @@ def render_description_variantes(variantes: list):
         "Ce tableau est enregistré avec le projet."
     )
 
-    # Initialiser / synchroniser le tableau stocké en session
+    # Initialiser / synchroniser SEULEMENT quand la liste des variantes change.
+    # (Re-synchroniser à chaque rerun reconstruit le DataFrame et fait « sauter »
+    #  la sélection lors de clics rapides dans l'éditeur.)
+    sig = tuple(noms)
     if "descriptions" not in st.session_state or st.session_state["descriptions"] is None:
         st.session_state["descriptions"] = _table_vierge(noms)
-    else:
+        st.session_state["_desc_sig"] = sig
+    elif st.session_state.get("_desc_sig") != sig:
         st.session_state["descriptions"] = _synchroniser_colonnes(
             st.session_state["descriptions"], noms
         )
+        st.session_state["_desc_sig"] = sig
 
     df = st.session_state["descriptions"]
 

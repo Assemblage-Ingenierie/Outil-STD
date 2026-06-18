@@ -167,10 +167,23 @@ class Variante:
             return np.nan
         dedans = confort.dans_zone(t.values[:n], w.values[:n], config, methode, vitesse)
         # Exonérer les heures de chauffe sous consigne
-        saison = self.df_horaire['saison'].values[:n] if 'saison' in self.df_horaire else None
-        exempt = confort.masque_chauffe_sous_consigne(t.values[:n], saison, config, methode)
+        exempt = confort.masque_chauffe_sous_consigne(
+            t.values[:n], self._est_chauffe(zone, n), config, methode)
         hors_et_occupe = (~dedans) & (~exempt) & occupe
         return 100.0 * int(hors_et_occupe.sum()) / n_occ
+
+    def _est_chauffe(self, zone: str, n: int):
+        """
+        Heures où le local est en chauffe : P chauffage > 0 (indicateur direct,
+        toujours disponible) ou, à défaut, saison Pléiades = chauffe.
+        """
+        pch = self.col_p_chaud(zone)
+        if not pch.empty:
+            return pch.values[:n] > 0
+        if 'saison' in self.df_horaire:
+            sais = self.df_horaire['saison'].values[:n]
+            return np.array(["chauff" in str(s).strip().lower() for s in sais])
+        return np.zeros(n, dtype=bool)
 
     def points_interieurs_givoni(self, zone: str, config: dict, methode: str = "givoni"):
         """
@@ -186,7 +199,7 @@ class Variante:
         T = t.values[:n]
         W = w.values[:n]
         saison = self.df_horaire['saison'].values[:n] if 'saison' in self.df_horaire else np.array([''] * n)
-        exempt = confort.masque_chauffe_sous_consigne(T, saison, config, methode)
+        exempt = confort.masque_chauffe_sous_consigne(T, self._est_chauffe(zone, n), config, methode)
         garde = ~exempt
         return {'T': T[garde], 'w': W[garde], 'saison': np.asarray(saison)[garde]}
 

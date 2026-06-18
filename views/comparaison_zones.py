@@ -69,17 +69,18 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
     cols_pct = {c: '{:.1f} %' for c in cols_pct_list}
 
     def _style_na(col):
-        return ['color:#9E9E9E; font-style:italic' if v != v else '' for v in col]
+        return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
+                if v != v else '' for v in col]
 
     st.dataframe(
-        df_comp.style.format(cols_pct, na_rep='—')
+        df_comp.style.format(cols_pct, na_rep='NA')
                      .background_gradient(subset=cols_couleur, cmap='YlOrRd')
                      .apply(_style_na, subset=cols_pct_list),
         use_container_width=True,
         height=min(600, 60 + 35 * len(df_comp)),
     )
     st.caption("« % hors » = part des heures d'occupation hors zone de confort. "
-               "« — » : local non occupé.")
+               "« NA » : non évaluable (local non occupé, ou export sans humidité/occupation).")
 
     csv = df_comp.to_csv(index=False).encode('utf-8-sig')
     st.download_button("⬇️ Exporter CSV", data=csv,

@@ -168,21 +168,22 @@ def t_min_modele(config: dict, methode: str) -> float:
     return float(min(float(np.min(T)) for _, _, T, _ in zones))
 
 
-def masque_chauffe_sous_consigne(T, saison, config: dict, methode: str):
+def masque_chauffe_sous_consigne(T, est_chauffe, config: dict, methode: str):
     """
-    Masque booléen des heures à EXCLURE : saison de chauffe ET température
-    sous la borne basse de confort (le local est chauffé à une consigne
-    inférieure au minimum Givoni — ce n'est pas de l'inconfort, juste un choix
-    de consigne). À retirer du décompte et de l'affichage des points.
+    Masque booléen des heures à EXCLURE : chauffage actif ET température sous
+    la borne basse de confort (le local est chauffé à une consigne inférieure
+    au minimum Givoni — ce n'est pas de l'inconfort, juste un choix de consigne).
+    À retirer du décompte et de l'affichage des points.
+
+    `est_chauffe` : tableau booléen « le local est en chauffe à cette heure »
+    (typiquement P chauffage > 0, ou à défaut saison de chauffe).
     """
     T = np.asarray(T, dtype=float)
-    if saison is None:
+    if est_chauffe is None:
         return np.zeros(T.shape, dtype=bool)
-    sais = np.asarray(saison)
-    n = min(len(T), len(sais))
-    est_chauffe = np.array(["chauff" in str(s).strip().lower() for s in sais[:n]])
+    ch = np.asarray(est_chauffe, dtype=bool)
+    n = min(len(T), len(ch))
     t_min = t_min_modele(config, methode)
-    sous_consigne = T[:n] < t_min
     out = np.zeros(T.shape, dtype=bool)
-    out[:n] = est_chauffe & sous_consigne
+    out[:n] = ch[:n] & (T[:n] < t_min)
     return out
