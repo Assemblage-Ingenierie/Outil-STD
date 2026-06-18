@@ -17,7 +17,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
 
     noms = [v.nom for v in variantes]
     selected_noms = persist_multiselect("Variantes affichées", noms,
-                                        "sel_syn_variantes", defaut=noms,
+                                        "sel_syn_variantes", defaut=noms, auto_new=True,
                                         placeholder="Rechercher / sélectionner des variantes…")
     variantes_sel = [v for v in variantes if v.nom in selected_noms]
     if not variantes_sel:

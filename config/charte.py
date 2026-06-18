@@ -12,17 +12,20 @@ GRILLE = "#C2C8CE"        # lignes de grille — visibles sans dominer
 COURBE_REF = "#7A828B"    # courbes de référence (iso-HR) — gris moyen lisible
 LIGNE_EXT = "#37474F"     # courbe T extérieure — gris-bleu foncé, contraste fort
 
+# Palette des variantes : couleurs vives et bien distinctes en tête
+# (rouge charte, bleu, violet, orange, vert…) pour un bon contraste visuel
+# même à 2-3 variantes. Les teintes ternes (brun, bleu-gris) sont en fin.
 COULEURS_VARIANTES = [
-    "#E30513",
-    "#30323E",
-    "#2196F3",
-    "#FF9800",
-    "#4CAF50",
-    "#9C27B0",
-    "#00BCD4",
-    "#FF5722",
-    "#795548",
-    "#607D8B",
+    "#E30513",  # rouge (charte)
+    "#2196F3",  # bleu
+    "#9C27B0",  # violet
+    "#FF9800",  # orange
+    "#2ECC71",  # vert
+    "#00BCD4",  # cyan
+    "#FF5722",  # orange foncé
+    "#3F51B5",  # indigo
+    "#8D6E63",  # brun
+    "#607D8B",  # bleu-gris
 ]
 
 FONT_FAMILY = "Open Sans, sans-serif"
