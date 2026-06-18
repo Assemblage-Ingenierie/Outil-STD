@@ -91,15 +91,16 @@ def creer_givoni(
     # ------------------------------------------------------------------
     # 2. Zones de confort (polygones) — de la plus large à la plus restreinte
     # ------------------------------------------------------------------
+    # Zones discrètes (arrière-plan) : remplissage quasi transparent, contour fin.
     zones = confort.zones_modele(config, methode)
     couleurs = confort.COULEURS_ZONES
     for idx, (v, label, T_z, W_z) in enumerate(reversed(zones)):
         couleur = couleurs[(len(zones) - 1 - idx) % len(couleurs)]
         fig.add_trace(go.Scatter(
             x=T_z, y=W_z, mode="lines", fill="toself",
-            fillcolor="rgba(46,204,113,0.08)",
-            line=dict(color=couleur, width=1.8),
-            name=label, hoverinfo="skip",
+            fillcolor="rgba(46,204,113,0.04)",
+            line=dict(color=couleur, width=1.0),
+            name=label, hoverinfo="skip", opacity=0.7,
         ))
 
     # ------------------------------------------------------------------
@@ -124,7 +125,7 @@ def creer_givoni(
                 continue
             fig.add_trace(go.Scatter(
                 x=T[m], y=w[m], mode="markers",
-                marker=dict(size=3, color=couleur, opacity=0.45),
+                marker=dict(size=4, color=couleur, opacity=0.6),
                 name=label,
                 hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra>" + label + "</extra>",
             ))
@@ -135,7 +136,7 @@ def creer_givoni(
             fig.add_trace(go.Scatter(
                 x=np.asarray(s['T'], float), y=np.asarray(s['w'], float),
                 mode="markers",
-                marker=dict(size=3, color=couleur, opacity=0.40),
+                marker=dict(size=4, color=couleur, opacity=0.55),
                 name=s.get('label', f'Série {i+1}'),
                 hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra>" + s.get('label', '') + "</extra>",
             ))

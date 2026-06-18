@@ -1,15 +1,14 @@
-"""Vue Niveau 1 — Synthèse générale (bâtiment entier, toutes variantes)."""
+"""Vue Niveau 1 — Synthèse générale : un tableau, une ligne par variante (bâtiment)."""
 import streamlit as st
 import pandas as pd
+import numpy as np
 
 from views.widgets import persist_multiselect
 
 
 def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
                              config: dict, methode: str = "givoni"):
-    """Affiche la synthèse générale pour toutes les variantes sélectionnées."""
-    from charts.temperature import graphique_heures_depassement, graphique_temp_min_moy_max
-
+    """Tableau de synthèse au niveau bâtiment : une ligne par variante."""
     if not variantes:
         st.info("Chargez au moins une variante dans le panneau latéral.")
         return
@@ -18,67 +17,45 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
 
     noms = [v.nom for v in variantes]
     selected_noms = persist_multiselect("Variantes affichées", noms,
-                                        "sel_syn_variantes", defaut=noms)
+                                        "sel_syn_variantes", defaut=noms,
+                                        placeholder="Rechercher / sélectionner des variantes…")
     variantes_sel = [v for v in variantes if v.nom in selected_noms]
-
     if not variantes_sel:
         st.warning("Sélectionnez au moins une variante.")
         return
 
-    # -- Tableaux par variante --
+    # -- Tableau : une ligne par variante --
+    rows = []
     for var in variantes_sel:
-        st.subheader(f"Variante : {var.nom}")
-        df_table = var.tableau_synthese_global(seuil_t1, seuil_t2, config=config, methode=methode)
-        if df_table.empty:
-            st.warning("Aucune donnée de synthèse disponible.")
-            continue
+        ind = var.indicateurs_batiment(config, methode)
+        rows.append({'Variante': var.nom, **ind})
+    df = pd.DataFrame(rows).set_index('Variante')
 
-        cols_pct_list = [c for c in df_table.columns if c.startswith('% hors')]
-        cols_couleur = [c for c in df_table.columns if c.startswith('H >')] + cols_pct_list
-        cols_pct = {c: '{:.1f} %' for c in cols_pct_list}
+    cols_pct = [c for c in df.columns if c.startswith('% hors')]
+    fmt = {
+        'Surface totale (m²)': '{:.0f}',
+        'Besoins chaud (kWh)': '{:.0f}', 'Besoins froid (kWh)': '{:.0f}',
+        'Besoins chaud (kWh/m²)': '{:.1f}', 'Besoins froid (kWh/m²)': '{:.1f}',
+        'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
+        **{c: '{:.1f} %' for c in cols_pct},
+    }
 
-        def _style_na(col):
-            # Cellules non applicables (local non occupé) : fond neutre, texte gris
-            return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
-                    if v != v else '' for v in col]
+    def _style_na(col):
+        return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
+                if v != v else '' for v in col]
 
-        st.dataframe(
-            df_table.style
-                .format({
-                    'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
-                    **cols_pct,
-                }, na_rep='NA')
-                .background_gradient(subset=cols_couleur, cmap='YlOrRd')
-                .apply(_style_na, subset=cols_pct_list),
-            use_container_width=True,
-            height=min(600, 60 + 35 * len(df_table)),
-        )
-        st.caption("« % hors » = part des heures d'occupation hors zone de confort "
-                   "(occupation déduite des apports d'occupants). « NA » : local non occupé.")
-
-        csv = df_table.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            f"⬇️ Exporter CSV — {var.nom}",
-            data=csv,
-            file_name=f"synthese_{var.nom}.csv",
-            mime="text/csv",
-            key=f"dl_syn_{var.nom}",
-        )
-
-    st.divider()
-
-    # -- Graphique heures de dépassement --
-    st.subheader("Heures de dépassement des seuils")
-    all_zones = variantes_sel[0].zones
-    zones_sel = persist_multiselect(
-        "Zones à afficher", all_zones, "sel_syn_zones_graph",
-        defaut=all_zones[:min(10, len(all_zones))]
+    st.dataframe(
+        df.style.format(fmt, na_rep='NA')
+              .background_gradient(subset=cols_pct, cmap='YlOrRd')
+              .apply(_style_na, subset=cols_pct),
+        use_container_width=True,
     )
-    if zones_sel:
-        fig = graphique_heures_depassement(variantes_sel, zones_sel, seuil_t1, seuil_t2)
-        st.plotly_chart(fig, use_container_width=True)
+    st.caption("Indicateurs au niveau bâtiment. T moy = moyenne pondérée par la surface ; "
+               "T min/max = extrêmes toutes zones. « % hors » = heures d'occupation hors "
+               "zone de confort (pondéré par les heures d'occupation de chaque zone). "
+               "« NA » : aucune zone occupée.")
 
-        # -- Températures min/moy/max en barres (remplace les boîtes à moustaches) --
-        st.subheader("Températures min / moyenne / max")
-        fig2 = graphique_temp_min_moy_max(variantes_sel, zones_sel)
-        st.plotly_chart(fig2, use_container_width=True)
+    csv = df.to_csv().encode('utf-8-sig')
+    st.download_button("⬇️ Exporter la synthèse (CSV)", data=csv,
+                       file_name="synthese_generale.csv", mime="text/csv",
+                       key="dl_syn_global")

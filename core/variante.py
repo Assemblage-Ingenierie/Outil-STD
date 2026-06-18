@@ -155,22 +155,32 @@ class Variante:
         plus basse que le minimum Givoni n'est pas de l'inconfort).
         Retourne NaN si le local n'a aucune heure d'occupation.
         """
+        n_hors, n_occ = self._compte_hors_occupe(zone, config, vitesse, methode)
+        if n_occ == 0:
+            return np.nan
+        return 100.0 * n_hors / n_occ
+
+    def _compte_hors_occupe(self, zone: str, config: dict, vitesse: float,
+                            methode: str = "givoni") -> tuple[int, int]:
+        """
+        Retourne (heures occupées ET hors confort, heures d'occupation) pour
+        une zone. Sert au % par zone et au % agrégé bâtiment.
+        """
         t = self.col_temp(zone)
         w = self.col_w_interieur(zone)
         occ = self.col_apports_occupants(zone)
         if t.empty or w.empty or occ.empty:
-            return np.nan
+            return 0, 0
         n = min(len(t), len(w), len(occ))
         occupe = occ.values[:n] > 0
         n_occ = int(occupe.sum())
         if n_occ == 0:
-            return np.nan
+            return 0, 0
         dedans = confort.dans_zone(t.values[:n], w.values[:n], config, methode, vitesse)
-        # Exonérer les heures de chauffe sous consigne
         exempt = confort.masque_chauffe_sous_consigne(
             t.values[:n], self._est_chauffe(zone, n), config, methode)
         hors_et_occupe = (~dedans) & (~exempt) & occupe
-        return 100.0 * int(hors_et_occupe.sum()) / n_occ
+        return int(hors_et_occupe.sum()), n_occ
 
     def _est_chauffe(self, zone: str, n: int):
         """
@@ -242,6 +252,73 @@ class Variante:
             }
             rows.append(row)
         return pd.DataFrame(rows)
+
+    # ------------------------------------------------------------------
+    # Agrégats au niveau BÂTIMENT (pour la synthèse 1 ligne / variante)
+    # ------------------------------------------------------------------
+
+    def indicateurs_batiment(self, config: dict, methode: str = "givoni",
+                             zones: list[str] | None = None) -> dict:
+        """
+        Indicateurs agrégés sur l'ensemble du bâtiment (zones données ou toutes) :
+          - Surface totale (somme)
+          - Besoins chaud / froid : totaux (kWh) et ratios (kWh/m²)
+          - T min (mini global), T moy (moyenne pondérée surface), T max (maxi global)
+          - % hors confort 0 / 1 m/s : pondéré par heures d'occupation
+        """
+        config = config or {}
+        zones = zones if zones is not None else self.zones
+        libelle = "COCO" if methode == "coco" else "Givoni"
+
+        surf_tot = 0.0
+        bch_tot = bfr_tot = 0.0
+        t_mins, t_maxs = [], []
+        somme_tmoy_surf = 0.0
+        somme_surf_pour_tmoy = 0.0
+        for zone in zones:
+            syn = self.synthese_zone(zone)
+            stats = self.stats_temp(zone)
+            surf = syn.get('surface_m2', np.nan) if syn else np.nan
+            if syn:
+                surf_tot += (surf if surf == surf else 0.0)
+                bch_tot += syn.get('besoins_chaud_kwh', 0.0) or 0.0
+                bfr_tot += syn.get('besoins_froid_kwh', 0.0) or 0.0
+            if stats['t_min'] == stats['t_min']:
+                t_mins.append(stats['t_min'])
+            if stats['t_max'] == stats['t_max']:
+                t_maxs.append(stats['t_max'])
+            if stats['t_moy'] == stats['t_moy'] and surf == surf and surf > 0:
+                somme_tmoy_surf += stats['t_moy'] * surf
+                somme_surf_pour_tmoy += surf
+
+        # T moyenne pondérée surface ; repli moyenne simple si pas de surfaces
+        if somme_surf_pour_tmoy > 0:
+            t_moy = somme_tmoy_surf / somme_surf_pour_tmoy
+        else:
+            moys = [self.stats_temp(z)['t_moy'] for z in zones]
+            moys = [m for m in moys if m == m]
+            t_moy = float(np.mean(moys)) if moys else np.nan
+
+        def _pct_bat(vitesse):
+            tot_hors = tot_occ = 0
+            for zone in zones:
+                h, o = self._compte_hors_occupe(zone, config, vitesse, methode)
+                tot_hors += h
+                tot_occ += o
+            return (100.0 * tot_hors / tot_occ) if tot_occ > 0 else np.nan
+
+        return {
+            'Surface totale (m²)': round(surf_tot, 1) if surf_tot else np.nan,
+            'Besoins chaud (kWh)': round(bch_tot, 0),
+            'Besoins chaud (kWh/m²)': round(bch_tot / surf_tot, 1) if surf_tot else np.nan,
+            'Besoins froid (kWh)': round(bfr_tot, 0),
+            'Besoins froid (kWh/m²)': round(bfr_tot / surf_tot, 1) if surf_tot else np.nan,
+            'T min (°C)': round(min(t_mins), 1) if t_mins else np.nan,
+            'T moy (°C)': round(t_moy, 1) if t_moy == t_moy else np.nan,
+            'T max (°C)': round(max(t_maxs), 1) if t_maxs else np.nan,
+            f'% hors {libelle} 0 m/s': _pct_bat(0.0),
+            f'% hors {libelle} 1 m/s': _pct_bat(1.0),
+        }
 
 
 def charger_variante(

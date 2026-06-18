@@ -113,21 +113,21 @@ def generer_rapport(
 
     doc.add_page_break()
 
-    # -- 1. Synthèse générale --
+    # -- 1. Synthèse générale (1 ligne par variante, niveau bâtiment) --
     _para_rouge(doc, "1. Synthèse générale", level=1)
 
+    import pandas as _pd
+    rows = []
     for var in variantes:
-        _para_rouge(doc, f"Variante : {var.nom}", level=2)
-        df_table = var.tableau_synthese_global(seuil_t1, seuil_t2, config=config, methode=methode)
-        if df_table.empty:
-            doc.add_paragraph("Aucune donnée disponible.")
-            continue
+        rows.append({'Variante': var.nom, **var.indicateurs_batiment(config, methode)})
+    df_syn = _pd.DataFrame(rows)
 
-        cols = list(df_table.columns)
-        table = doc.add_table(rows=1 + len(df_table), cols=len(cols))
+    if df_syn.empty:
+        doc.add_paragraph("Aucune donnée disponible.")
+    else:
+        cols = list(df_syn.columns)
+        table = doc.add_table(rows=1 + len(df_syn), cols=len(cols))
         table.style = 'Table Grid'
-
-        # En-tête
         for j, col_name in enumerate(cols):
             cell = table.rows[0].cells[j]
             cell.text = col_name
@@ -137,14 +137,11 @@ def generer_rapport(
             run.font.bold = True
             run.font.size = Pt(8)
             run.font.name = 'Open Sans'
-
-        # Données
-        for i, row in df_table.iterrows():
+        for i, row in df_syn.iterrows():
             for j, (col_name, val) in enumerate(row.items()):
-                cell = table.rows[i+1].cells[j]
-                # Formatage : NaN -> '—', colonnes '% hors' -> 'xx.x %'
-                if isinstance(val, float) and val != val:      # NaN
-                    txt = '—'
+                cell = table.rows[i + 1].cells[j]
+                if isinstance(val, float) and val != val:          # NaN
+                    txt = 'NA'
                 elif col_name.startswith('% hors') and isinstance(val, (int, float)):
                     txt = f"{val:.1f} %"
                 else:
@@ -155,7 +152,6 @@ def generer_rapport(
                 run.font.name = 'Open Sans'
                 if i % 2 == 1:
                     _set_cell_bg(cell, (0xF2, 0xF2, 0xF2))
-
         doc.add_paragraph()
 
     # -- 2. Focus zones --

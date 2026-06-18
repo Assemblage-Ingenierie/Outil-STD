@@ -32,37 +32,57 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     with col2:
         noms = [v.nom for v in variantes]
         selected_noms = persist_multiselect("Variantes", noms,
-                                            "sel_focus_variantes", defaut=noms)
+                                            "sel_focus_variantes", defaut=noms,
+                                            placeholder="Rechercher / sélectionner des variantes…")
 
     variantes_sel = [v for v in variantes if v.nom in selected_noms]
     if not variantes_sel or not zone:
         return
 
-    # -- Indicateurs clés --
-    st.subheader("Indicateurs clés")
-    cols = st.columns(len(variantes_sel))
-    for col_ui, var in zip(cols, variantes_sel):
+    lib = "COCO" if methode == "coco" else "Givoni"
+
+    # -- Tableau comparatif : une ligne par variante (pour la zone choisie) --
+    st.subheader(f"Comparatif des variantes — {zone}")
+    rows = []
+    for var in variantes_sel:
         stats = var.stats_temp(zone)
-        with col_ui:
-            st.markdown(f"**{var.nom}**")
-            st.metric("T min", f"{stats['t_min']:.1f} °C")
-            st.metric("T moy", f"{stats['t_moy']:.1f} °C")
-            st.metric("T max", f"{stats['t_max']:.1f} °C")
-            lib = "COCO" if methode == "coco" else "Givoni"
+        syn = var.synthese_zone(zone)
+        hr = var.col_hr(zone)
+        rows.append({
+            'Variante': var.nom,
+            'Surface (m²)': round(syn['surface_m2'], 0) if syn and not np.isnan(syn.get('surface_m2', float('nan'))) else np.nan,
+            'Besoins ch. (kWh/m²)': round(syn['besoins_chaud_kwh_m2'], 1) if syn else np.nan,
+            'Besoins fr. (kWh/m²)': round(syn['besoins_froid_kwh_m2'], 1) if syn else np.nan,
+            'T min (°C)': round(stats['t_min'], 1),
+            'T moy (°C)': round(stats['t_moy'], 1),
+            'T max (°C)': round(stats['t_max'], 1),
+            f'H > {seuil_t1}°C': var.heures_dessus_seuil(zone, seuil_t1),
+            f'H > {seuil_t2}°C': var.heures_dessus_seuil(zone, seuil_t2),
+            f'% hors {lib} 0 m/s': var.pct_hors_confort(zone, config, 0.0, methode),
+            f'% hors {lib} 1 m/s': var.pct_hors_confort(zone, config, 1.0, methode),
+            'HR moy (%)': round(float(hr.mean()), 1) if not hr.empty else np.nan,
+            'Occupation (h/an)': var.heures_occupation(zone),
+        })
+    df_cmp = pd.DataFrame(rows).set_index('Variante')
+    cols_pct = [c for c in df_cmp.columns if c.startswith('% hors')]
 
-            def _fmt_pct(v):
-                return f"{v:.1f} %" if v == v else "— (non occupé)"
+    def _style_na(col):
+        return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
+                if v != v else '' for v in col]
 
-            st.metric(f"H > {seuil_t1}°C", f"{var.heures_dessus_seuil(zone, seuil_t1)} h")
-            st.metric(f"H > {seuil_t2}°C", f"{var.heures_dessus_seuil(zone, seuil_t2)} h")
-            st.metric(f"% hors {lib} 0 m/s",
-                      _fmt_pct(var.pct_hors_confort(zone, config, 0.0, methode)))
-            st.metric(f"% hors {lib} 1 m/s",
-                      _fmt_pct(var.pct_hors_confort(zone, config, 1.0, methode)))
-            st.caption(f"{var.heures_occupation(zone)} h d'occupation/an")
-            hr_vals = var.col_hr(zone)
-            if not hr_vals.empty:
-                st.metric("HR moy", f"{hr_vals.mean():.1f} %")
+    st.dataframe(
+        df_cmp.style.format({
+            'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
+            'HR moy (%)': '{:.1f}',
+            **{c: '{:.1f} %' for c in cols_pct},
+        }, na_rep='NA')
+        .background_gradient(subset=cols_pct, cmap='YlOrRd')
+        .apply(_style_na, subset=cols_pct),
+        use_container_width=True,
+    )
+    csv = df_cmp.to_csv().encode('utf-8-sig')
+    st.download_button("⬇️ Exporter le comparatif (CSV)", data=csv,
+                       file_name=f"focus_{zone}.csv", mime="text/csv", key="dl_focus")
 
     st.divider()
 
@@ -92,14 +112,22 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             pts['label'] = v.nom
             series.append(pts)
 
-    if series:
-        fig_giv = creer_givoni(series, config=config, methode=methode)
-        st.plotly_chart(fig_giv, use_container_width=True)
-        if len(series) > 1:
-            st.caption("Plusieurs variantes : une couleur par variante. "
-                       "Sélectionnez une seule variante pour une coloration par saison.")
-    else:
+    if not series:
         st.info("Diagramme indisponible pour cette zone.")
+    else:
+        # 1) Diagramme global : toutes les variantes superposées (une couleur/variante)
+        if len(series) > 1:
+            st.markdown("**Toutes les variantes superposées**")
+            fig_all = creer_givoni(series, config=config, methode=methode,
+                                   titre=f"Diagramme de {nom_modele} — {zone} (toutes variantes)")
+            st.plotly_chart(fig_all, use_container_width=True, key="giv_all")
+
+        # 2) Un diagramme par variante (coloration par saison)
+        st.markdown("**Par variante**" if len(series) > 1 else "")
+        for s in series:
+            fig_one = creer_givoni([s], config=config, methode=methode,
+                                   titre=f"Diagramme de {nom_modele} — {zone} · {s['label']}")
+            st.plotly_chart(fig_one, use_container_width=True, key=f"giv_{s['label']}")
 
     # -- Apports solaires & internes --
     st.subheader("Apports solaires mensuels")
