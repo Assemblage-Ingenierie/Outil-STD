@@ -78,8 +78,9 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     for c in df_cmp.columns:
         if c.startswith('DH'):
             fmt_focus[c] = '{:.0f}'
+    _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
     st.dataframe(
-        df_cmp.style.format(fmt_focus, na_rep='NA')
+        df_cmp.style.format(fmt_focus, na_rep='NA', decimal=_dec, thousands=' ')
         .background_gradient(subset=cols_pct, cmap='YlOrRd')
         .apply(_style_na, subset=cols_pct),
         use_container_width=True,

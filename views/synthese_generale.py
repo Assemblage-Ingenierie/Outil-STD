@@ -49,8 +49,9 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
         return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
                 if v != v else '' for v in col]
 
+    _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
     st.dataframe(
-        df.style.format(fmt, na_rep='NA')
+        df.style.format(fmt, na_rep='NA', decimal=_dec, thousands=' ')
               .background_gradient(subset=cols_pct, cmap='YlOrRd')
               .apply(_style_na, subset=cols_pct),
         use_container_width=True,

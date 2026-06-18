@@ -119,6 +119,10 @@ def render_reglages():
         else:
             ss['cfg_periode'] = val
 
+        st.subheader("Affichage")
+        persist_checkbox("Nombres au format français (virgule décimale)",
+                         "cfg_format_fr", default=True)
+
     # ==================================================================
     # Colonne droite : météo, ajout de variante
     # ==================================================================
@@ -289,6 +293,35 @@ def _section_export():
                     key="dl_rapport")
             except Exception as e:
                 st.error(f"Erreur rapport : {e}")
+
+    st.markdown("---")
+    st.subheader("📊 Export Excel (toutes les tables)")
+    st.caption("Un classeur multi-onglets : synthèse, focus, comparaison, améliorations.")
+    if st.button("Générer le classeur Excel", key="btn_excel"):
+        if not ss.variantes:
+            st.error("Chargez au moins une variante.")
+            return
+        from views.description_variantes import construire_recap
+        zone_focus = ss.get('sel_focus_zone')
+        var_comp = next((v for v in ss.variantes if v.nom == ss.get('sel_comp_variante')), None)
+        zones_comp = ss.get('sel_comp_zones', [])
+        noms = [v.nom for v in ss.variantes]
+        with st.spinner("Génération du classeur Excel…"):
+            try:
+                from export.excel_export import generer_excel
+                buf = generer_excel(
+                    variantes=ss.variantes, config=ss.config_projet,
+                    seuil_t1=ss.get('cfg_seuil_t1', 26.0), seuil_t2=ss.get('cfg_seuil_t2', 28.0),
+                    methode=ss.get('cfg_methode', 'givoni'), dh_on=ss.get('cfg_dh_on', False),
+                    zone_focus=zone_focus, var_comp=var_comp, zones_comp=zones_comp,
+                    df_recap=construire_recap(noms), df_detail=ss.get('ameliorations'))
+                st.download_button(
+                    "⬇️ Télécharger le classeur", data=buf,
+                    file_name=f"tables_STD_{ss.get('cfg_nom_projet','projet').replace(' ', '_')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_excel")
+            except Exception as e:
+                st.error(f"Erreur Excel : {e}")
 
 
 # ----------------------------------------------------------------------
