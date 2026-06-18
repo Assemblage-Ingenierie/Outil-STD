@@ -179,7 +179,12 @@ with st.sidebar:
         if k not in st.session_state:
             st.session_state[k] = ''
 
-    with st.expander("➕ Ajouter une variante", expanded=len(st.session_state.variantes) == 0):
+    # Garder le panneau ouvert tant qu'un ajout est en cours (au moins un
+    # fichier déjà sélectionné), sinon il se referme à chaque import.
+    ajout_en_cours = bool(st.session_state.sel_resultats or st.session_state.sel_synthese
+                          or st.session_state.sel_meteo)
+    with st.expander("➕ Ajouter une variante",
+                     expanded=(len(st.session_state.variantes) == 0 or ajout_en_cours)):
         nom_var = st.text_input("Nom de la variante", value="Variante 1", key="nom_var_input")
 
         st.caption("Sélectionnez vos fichiers (aucune limite de taille)")

@@ -62,7 +62,9 @@ def graphique_temp_horaire(
             continue
         meteos_vus[nom] = var
     multi = len(meteos_vus) > 1
-    teintes_ext = [LIGNE_EXT, "#78909C", "#90A4AE", "#B0BEC5"]
+    # Météo unique : gris-bleu foncé. Plusieurs météos : couleurs distinctes
+    # (toujours en pointillé pour marquer « extérieur »).
+    teintes_ext = [LIGNE_EXT] if not multi else ["#455A64", "#8E24AA", "#00897B", "#6D4C41"]
     for j, (nom, var) in enumerate(meteos_vus.items()):
         t_ext = var.df_meteo['T_ext'].values
         n = min(len(t_ext), len(var.df_horaire))
