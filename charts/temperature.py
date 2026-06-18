@@ -105,10 +105,11 @@ def graphique_text_vs_text_op(
     variantes,
     zone: str,
     titre: str | None = None,
+    par_saison: bool = True,
 ) -> go.Figure:
     """
     Nuage de points T° opérative intérieure vs T° extérieure.
-    - 1 variante : coloration par saison.
+    - 1 variante : coloration par saison (si par_saison) sinon couleur unique.
     - plusieurs variantes : une couleur par variante (chacune avec sa propre
       météo), avec le fichier météo en étiquette/survol.
     """
@@ -127,17 +128,25 @@ def graphique_text_vs_text_op(
         mp = var.masque_periode(n)
         t_ext = var.df_meteo['T_ext'].values[:n][mp]
         t_int = var.col_temp(zone).values[:n][mp]
-        saison = var.df_horaire['saison'].values[:n][mp]
-        couleurs_saison = {'Refroidissement': '#2196F3', 'Chauffage': ROUGE, '': '#757575'}
-        for saison_nom, color in couleurs_saison.items():
-            mask = saison == saison_nom
-            if not any(mask):
-                continue
-            label = saison_nom if saison_nom else 'Inter-saison'
+        if par_saison:
+            saison = var.df_horaire['saison'].values[:n][mp]
+            couleurs_saison = {'Refroidissement': '#2196F3', 'Chauffage': ROUGE, '': '#757575'}
+            for saison_nom, color in couleurs_saison.items():
+                mask = saison == saison_nom
+                if not any(mask):
+                    continue
+                label = saison_nom if saison_nom else 'Hors saison de chauffe'
+                fig.add_trace(go.Scatter(
+                    x=t_ext[mask], y=t_int[mask], mode='markers',
+                    marker=dict(size=3, color=color, opacity=0.4), name=label,
+                    hovertemplate='T_ext=%{x:.1f}°C<br>T_int=%{y:.1f}°C<extra>' + label + '</extra>',
+                ))
+        else:
             fig.add_trace(go.Scatter(
-                x=t_ext[mask], y=t_int[mask], mode='markers',
-                marker=dict(size=3, color=color, opacity=0.4), name=label,
-                hovertemplate='T_ext=%{x:.1f}°C<br>T_int=%{y:.1f}°C<extra>' + label + '</extra>',
+                x=t_ext, y=t_int, mode='markers',
+                marker=dict(size=3, color="#1976D2", opacity=0.4),
+                name='Points horaires',
+                hovertemplate='T_ext=%{x:.1f}°C<br>T_int=%{y:.1f}°C<extra></extra>',
             ))
         all_x, all_y = list(t_ext), list(t_int)
     else:

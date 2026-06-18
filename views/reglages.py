@@ -122,6 +122,10 @@ def render_reglages():
         st.subheader("Affichage")
         persist_checkbox("Nombres au format français (virgule décimale)",
                          "cfg_format_fr", default=True)
+        persist_checkbox("Points sans distinction de saison (diagrammes)",
+                         "cfg_saison_off", default=False,
+                         help="Affiche les points en une couleur unique, sans séparer "
+                              "saison de chauffe / refroidissement.")
 
     # ==================================================================
     # Colonne droite : météo, ajout de variante

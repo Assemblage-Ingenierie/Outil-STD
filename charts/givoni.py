@@ -12,7 +12,8 @@ from core import confort
 
 COULEUR_CHAUFFE = ROUGE            # rouge — saison de chauffe (chaud)
 COULEUR_REFROIDISSEMENT = "#2196F3"  # bleu — saison de refroidissement (froid)
-COULEUR_INTERSAISON = "#757575"    # gris foncé — hors saison marquée
+COULEUR_INTERSAISON = "#757575"    # gris foncé — hors saison de chauffe
+COULEUR_POINTS_UNIQUE = "#1976D2"  # couleur unique (sans distinction de saison)
 
 W_MAX_PLOT = 30.0
 T_MIN_PLOT = -5.0
@@ -43,17 +44,19 @@ def creer_givoni(
     config: dict,
     methode: str = "givoni",
     titre: str | None = None,
+    par_saison: bool = True,
 ) -> go.Figure:
     """
     Crée le diagramme bioclimatique (Givoni ou COCO) des conditions INTÉRIEURES.
 
     Args:
-        series   : liste de dicts {'label', 'T', 'w', 'saison'(optionnel)}.
-                   - 1 seule série : points colorés par saison (chauffe/refroid.)
-                   - plusieurs séries : une couleur par série (comparaison variantes)
-        config   : configuration projet (bornes Givoni)
-        methode  : 'givoni' (4 zones par vitesse d'air) ou 'coco' (2 zones tropicales)
-        titre    : titre (auto si None)
+        series     : liste de dicts {'label', 'T', 'w', 'saison'(optionnel)}.
+                     - 1 seule série : points colorés par saison (si par_saison)
+                     - plusieurs séries : une couleur par série (comparaison variantes)
+        config     : configuration projet (bornes Givoni)
+        methode    : 'givoni' (4 zones par vitesse d'air) ou 'coco' (2 zones tropicales)
+        titre      : titre (auto si None)
+        par_saison : colorer les points selon la saison (sinon couleur unique)
     """
     methode = (methode or "givoni").lower()
     if isinstance(series, dict):
@@ -109,25 +112,34 @@ def creer_givoni(
     series = [s for s in (series or []) if s is not None and len(s.get('T', [])) > 0]
 
     if len(series) == 1:
-        # Coloration par saison
         s = series[0]
         T = np.asarray(s['T'], float)
         w = np.asarray(s['w'], float)
-        sais = _classer_saison(np.asarray(s.get('saison', np.array([''] * len(T)))))
-        cats = [
-            ("refroidissement", "Saison de refroidissement", COULEUR_REFROIDISSEMENT),
-            ("chauffe", "Saison de chauffe", COULEUR_CHAUFFE),
-            ("inter", "Inter-saison", COULEUR_INTERSAISON),
-        ]
-        for key, label, couleur in cats:
-            m = sais == key
-            if not m.any():
-                continue
+        if par_saison:
+            # Coloration par saison
+            sais = _classer_saison(np.asarray(s.get('saison', np.array([''] * len(T)))))
+            cats = [
+                ("refroidissement", "Saison de refroidissement", COULEUR_REFROIDISSEMENT),
+                ("chauffe", "Saison de chauffe", COULEUR_CHAUFFE),
+                ("inter", "Hors saison de chauffe", COULEUR_INTERSAISON),
+            ]
+            for key, label, couleur in cats:
+                m = sais == key
+                if not m.any():
+                    continue
+                fig.add_trace(go.Scatter(
+                    x=T[m], y=w[m], mode="markers",
+                    marker=dict(size=4, color=couleur, opacity=0.6),
+                    name=label,
+                    hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra>" + label + "</extra>",
+                ))
+        else:
+            # Couleur unique (sans distinction de saison)
             fig.add_trace(go.Scatter(
-                x=T[m], y=w[m], mode="markers",
-                marker=dict(size=4, color=couleur, opacity=0.6),
-                name=label,
-                hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra>" + label + "</extra>",
+                x=T, y=w, mode="markers",
+                marker=dict(size=4, color=COULEUR_POINTS_UNIQUE, opacity=0.55),
+                name="Conditions intérieures",
+                hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra></extra>",
             ))
     else:
         # Une couleur par série (comparaison de variantes)

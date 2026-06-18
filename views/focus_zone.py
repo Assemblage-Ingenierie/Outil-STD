@@ -80,7 +80,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             fmt_focus[c] = '{:.0f}'
     _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
     st.dataframe(
-        df_cmp.style.format(fmt_focus, na_rep='NA', decimal=_dec, thousands=' ')
+        df_cmp.style.format(fmt_focus, na_rep='NA', decimal=_dec, thousands=' ', precision=1)
         .background_gradient(subset=cols_pct, cmap='YlOrRd')
         .apply(_style_na, subset=cols_pct),
         use_container_width=True,
@@ -103,11 +103,13 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     fig_temp = graphique_temp_horaire(variantes_sel, zone, seuil_t1, seuil_t2)
     st.plotly_chart(fig_temp, use_container_width=True)
 
+    par_saison = not st.session_state.get('cfg_saison_off', False)
+
     # -- T_op vs T_ext (toutes les variantes sélectionnées, chacune sa météo) --
     st.subheader("Température opérative vs Température extérieure")
-    fig_op = graphique_text_vs_text_op(variantes_sel, zone)
+    fig_op = graphique_text_vs_text_op(variantes_sel, zone, par_saison=par_saison)
     st.plotly_chart(fig_op, use_container_width=True)
-    if len(variantes_sel) == 1:
+    if len(variantes_sel) == 1 and par_saison:
         st.caption("Coloration par saison. Sélectionnez plusieurs variantes pour les comparer.")
 
     # -- Comparaison des fichiers météo (si différents) --
@@ -135,14 +137,16 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
         if len(series) > 1:
             st.markdown("**Toutes les variantes superposées**")
             fig_all = creer_givoni(series, config=config, methode=methode,
-                                   titre=f"Diagramme de {nom_modele} — {zone} (toutes variantes)")
+                                   titre=f"Diagramme de {nom_modele} — {zone} (toutes variantes)",
+                                   par_saison=par_saison)
             st.plotly_chart(fig_all, use_container_width=True, key="giv_all")
 
-        # 2) Un diagramme par variante (coloration par saison)
+        # 2) Un diagramme par variante (coloration par saison si activée)
         st.markdown("**Par variante**" if len(series) > 1 else "")
         for s in series:
             fig_one = creer_givoni([s], config=config, methode=methode,
-                                   titre=f"Diagramme de {nom_modele} — {zone} · {s['label']}")
+                                   titre=f"Diagramme de {nom_modele} — {zone} · {s['label']}",
+                                   par_saison=par_saison)
             st.plotly_chart(fig_one, use_container_width=True, key=f"giv_{s['label']}")
 
     # -- Apports solaires & internes --

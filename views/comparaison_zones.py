@@ -76,7 +76,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
 
     _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
     st.dataframe(
-        df_comp.style.format(cols_pct, na_rep='NA', decimal=_dec, thousands=' ')
+        df_comp.style.format(cols_pct, na_rep='NA', decimal=_dec, thousands=' ', precision=1)
                      .background_gradient(subset=cols_couleur, cmap='YlOrRd')
                      .apply(_style_na, subset=cols_pct_list),
         use_container_width=True,
