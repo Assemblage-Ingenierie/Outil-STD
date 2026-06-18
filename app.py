@@ -23,6 +23,31 @@ from views.comparaison_zones import render_comparaison_zones
 from views.description_variantes import render_description_variantes
 from core.file_picker import choisir_fichier, enregistrer_fichier
 from core import projet as projet_io
+import dataclasses
+
+
+def _mtime(path: str) -> float:
+    try:
+        return Path(path).stat().st_mtime if path else 0.0
+    except OSError:
+        return 0.0
+
+
+@st.cache_data(show_spinner=False, max_entries=12)
+def _charger_variante_cache(res: str, syn: str, met: str,
+                            res_m: float, syn_m: float, met_m: float) -> Variante:
+    """
+    Chargement mis en cache par (chemins + dates de modification). Recharger
+    un même fichier (ex. après suppression/ré-ajout) est alors instantané.
+    Le nom de variante n'entre pas dans la clé : on l'affecte après coup.
+    """
+    return charger_variante("", res, syn, met)
+
+
+def charger_variante_rapide(nom: str, res: str, syn: str, met: str) -> Variante:
+    var = _charger_variante_cache(res, syn, met, _mtime(res), _mtime(syn), _mtime(met))
+    # Copie légère (DataFrames partagés en lecture) avec le bon nom
+    return dataclasses.replace(var, nom=nom)
 
 # -- Chemins --
 BASE_DIR = Path(__file__).parent
@@ -244,12 +269,8 @@ with st.sidebar:
             else:
                 with st.spinner(f"Chargement de '{nom_var}'... (peut prendre 30-60s pour les gros fichiers)"):
                     try:
-                        var = charger_variante(
-                            nom=nom_var,
-                            fichier_resultats=path_r_input,
-                            fichier_synthese=path_s_input,
-                            fichier_meteo=path_m_input or '',
-                        )
+                        var = charger_variante_rapide(
+                            nom_var, path_r_input, path_s_input, path_m_input or '')
                         st.session_state.variantes.append(var)
                         # Réinitialiser les sélections pour la variante suivante
                         st.session_state.sel_resultats = ''
@@ -309,7 +330,8 @@ with st.sidebar:
                             'params': {'seuil_t1': seuil_t1, 'seuil_t2': seuil_t2,
                                        'methode': methode, 'config': st.session_state.config_projet},
                             'variantes': st.session_state.variantes,
-                            'descriptions': st.session_state.get('descriptions'),
+                            'ameliorations': st.session_state.get('ameliorations'),
+                            'recap_vals': st.session_state.get('recap_vals'),
                             'selections': {k: v for k, v in st.session_state.items()
                                            if k.startswith('sel_')},
                         }
@@ -326,10 +348,12 @@ with st.sidebar:
                     charge = projet_io.charger_projet(chemin)
                     st.session_state.variantes = charge['variantes']
                     st.session_state.config_projet = charge['params'].get('config', st.session_state.config_projet)
-                    if charge.get('descriptions') is not None:
-                        st.session_state['descriptions'] = charge['descriptions']
-                    # Forcer l'éditeur de variantes à reprendre les descriptions chargées
-                    for k in ('_desc_base', '_desc_sig', 'editor_descriptions'):
+                    if charge.get('ameliorations') is not None:
+                        st.session_state['ameliorations'] = charge['ameliorations']
+                    if charge.get('recap_vals') is not None:
+                        st.session_state['recap_vals'] = charge['recap_vals']
+                    # Forcer les éditeurs de la page Variantes à reprendre les données chargées
+                    for k in ('desc_base', 'recap_base', '_recap_sig', 'ed_desc', 'ed_recap'):
                         st.session_state.pop(k, None)
                     # Restaurer les sélections persistantes
                     for k, v in (charge.get('selections') or {}).items():
@@ -362,6 +386,12 @@ with st.sidebar:
             zones_focus_rapport = [zone_focus] if zone_focus else []
             zones_comp_rapport = ss.get('sel_comp_zones', [])
 
+            # Tableaux de description des variantes (récap + descriptif)
+            from views.description_variantes import construire_recap, liste_ameliorations
+            noms_rapport = [v.nom for v in variantes_rapport]
+            df_recap = construire_recap(noms_rapport)
+            df_detail = ss.get('ameliorations')
+
             with st.spinner("Génération du rapport..."):
                 try:
                     from export.word_report import generer_rapport
@@ -374,6 +404,8 @@ with st.sidebar:
                         zones_comparaison=zones_comp_rapport,
                         nom_projet=nom_projet,
                         methode=methode,
+                        df_recap=df_recap,
+                        df_detail=df_detail,
                     )
                     st.download_button(
                         "⬇️ Télécharger le rapport",

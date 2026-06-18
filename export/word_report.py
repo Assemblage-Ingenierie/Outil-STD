@@ -66,6 +66,8 @@ def generer_rapport(
     zones_comparaison: list[str] | None = None,
     nom_projet: str = "Projet STD",
     methode: str = "givoni",
+    df_recap=None,
+    df_detail=None,
 ) -> BytesIO:
     """
     Génère le rapport Word complet selon la trame fixe:
@@ -112,6 +114,65 @@ def generer_rapport(
     sous_titre.runs[0].font.color.rgb = C_ROUGE
 
     doc.add_page_break()
+
+    # -- 0. Variantes étudiées (récapitulatif + descriptif des améliorations) --
+    if (df_recap is not None and not df_recap.empty) or \
+       (df_detail is not None and not df_detail.empty):
+        _para_rouge(doc, "Variantes étudiées", level=1)
+
+        if df_recap is not None and not df_recap.empty:
+            _para_rouge(doc, "Améliorations par variante", level=2)
+            # index = améliorations, colonnes = variantes ; cases cochées -> ✕
+            rec = df_recap.reset_index()
+            cols = list(rec.columns)
+            t = doc.add_table(rows=1 + len(rec), cols=len(cols))
+            t.style = 'Table Grid'
+            for j, c in enumerate(cols):
+                cell = t.rows[0].cells[j]
+                cell.text = str(c)
+                _set_cell_bg(cell, (0xE3, 0x05, 0x13))
+                r = cell.paragraphs[0].runs[0]
+                r.font.color.rgb = C_BLANC; r.font.bold = True
+                r.font.size = Pt(8); r.font.name = 'Open Sans'
+            for i, row in rec.iterrows():
+                for j, (cname, val) in enumerate(row.items()):
+                    cell = t.rows[i + 1].cells[j]
+                    if j == 0:
+                        txt = str(val)
+                    else:
+                        txt = "✕" if bool(val) else ""
+                    cell.text = txt
+                    rr = cell.paragraphs[0].runs[0] if cell.paragraphs[0].runs else cell.paragraphs[0].add_run(txt)
+                    rr.font.size = Pt(8); rr.font.name = 'Open Sans'
+                    if j > 0:
+                        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    if i % 2 == 1:
+                        _set_cell_bg(cell, (0xF2, 0xF2, 0xF2))
+            doc.add_paragraph()
+
+        if df_detail is not None and not df_detail.empty:
+            _para_rouge(doc, "Descriptif des améliorations", level=2)
+            dcols = list(df_detail.columns)
+            t2 = doc.add_table(rows=1 + len(df_detail), cols=len(dcols))
+            t2.style = 'Table Grid'
+            for j, c in enumerate(dcols):
+                cell = t2.rows[0].cells[j]
+                cell.text = str(c)
+                _set_cell_bg(cell, (0xE3, 0x05, 0x13))
+                r = cell.paragraphs[0].runs[0]
+                r.font.color.rgb = C_BLANC; r.font.bold = True
+                r.font.size = Pt(8); r.font.name = 'Open Sans'
+            for i, row in df_detail.reset_index(drop=True).iterrows():
+                for j, val in enumerate(row):
+                    cell = t2.rows[i + 1].cells[j]
+                    cell.text = str(val) if val is not None else ""
+                    rr = cell.paragraphs[0].runs[0] if cell.paragraphs[0].runs else cell.paragraphs[0].add_run(cell.text)
+                    rr.font.size = Pt(8); rr.font.name = 'Open Sans'
+                    if i % 2 == 1:
+                        _set_cell_bg(cell, (0xF2, 0xF2, 0xF2))
+            doc.add_paragraph()
+
+        doc.add_page_break()
 
     # -- 1. Synthèse générale (1 ligne par variante, niveau bâtiment) --
     _para_rouge(doc, "1. Synthèse générale", level=1)

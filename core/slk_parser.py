@@ -47,10 +47,14 @@ def _parse_value(raw: str):
         return raw
 
 
-def _lire_cellules(filepath: Path, lignes_cibles: set | None = None) -> dict:
+def _lire_cellules(filepath: Path, lignes_cibles: set | None = None,
+                   cols_cibles: set | None = None) -> dict:
     """
     Lit le fichier SLK et retourne un dict {(row, col): valeur}.
-    Si lignes_cibles est fourni, ne charge que ces numéros de ligne Y.
+    - lignes_cibles : ne charge que ces numéros de ligne Y.
+    - cols_cibles   : ne charge que ces numéros de colonne X. Permet de NE PAS
+      matérialiser les ~1500 colonnes inutiles (consommations) des gros fichiers
+      résultats → chargement beaucoup plus rapide et moins gourmand en RAM.
     """
     cellules = {}
     pattern = re.compile(r'C;Y(\d+);X(\d+);K([^;\n]+)')
@@ -64,6 +68,8 @@ def _lire_cellules(filepath: Path, lignes_cibles: set | None = None) -> dict:
                 continue
             row, col = int(m.group(1)), int(m.group(2))
             if lignes_cibles is not None and row not in lignes_cibles:
+                continue
+            if cols_cibles is not None and col not in cols_cibles:
                 continue
             cellules[(row, col)] = _parse_value(m.group(3))
 
@@ -149,11 +155,12 @@ def parse_resultats(filepath: str | Path) -> pd.DataFrame:
         if type_name in noms_utiles:
             cols_a_charger.update(c for c, _ in items)
 
-    # 5. Lire toutes les données
+    # 5. Lire UNIQUEMENT les colonnes utiles (globales + grandeurs exploitées),
+    #    pour ne pas charger en mémoire les ~1500 colonnes de consommations.
     print(f"  Lecture de {filepath.name}...")
-    toutes_cellules = _lire_cellules(filepath)
+    toutes_cellules = _lire_cellules(filepath, cols_cibles=cols_a_charger)
 
-    # 6. Déterminer le nombre de lignes de données
+    # 6. Déterminer le nombre de lignes de données (colonne mois présente partout)
     max_row = max(r for (r, c) in toutes_cellules.keys())
     n_rows = max_row - 2  # lignes 3 à max_row
 

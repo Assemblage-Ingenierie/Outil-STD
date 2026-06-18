@@ -1,10 +1,17 @@
-"""Vue Variantes — tableau comparatif à double entrée (caractéristiques × variantes)."""
+"""
+Vue Variantes — deux tableaux synchronisés par la liste d'améliorations :
+  1. Récapitulatif : améliorations (lignes) × variantes (colonnes), cases à cocher.
+  2. Descriptif    : améliorations (lignes) × descriptif libre (1 colonne).
+
+La liste des améliorations est UNIQUE (source = tableau descriptif). Tout ajout /
+renommage / suppression d'amélioration dans le descriptif se répercute dans le
+récapitulatif. Les deux tableaux figurent dans le rapport Word.
+"""
 import streamlit as st
 import pandas as pd
 
 
-# Caractéristiques proposées par défaut (l'utilisateur peut éditer / ajouter / retirer)
-CARACTERISTIQUES_DEFAUT = [
+AMELIORATIONS_DEFAUT = [
     "Brise-soleil / protections solaires",
     "Isolation renforcée en toiture",
     "Isolation des murs",
@@ -17,82 +24,112 @@ CARACTERISTIQUES_DEFAUT = [
 ]
 
 
-def _table_vierge(noms_variantes: list[str]) -> pd.DataFrame:
-    df = pd.DataFrame({"Caractéristique": CARACTERISTIQUES_DEFAUT})
-    for nom in noms_variantes:
-        df[nom] = False
-    return df
+def _init_state():
+    ss = st.session_state
+    if "ameliorations" not in ss or ss["ameliorations"] is None:
+        ss["ameliorations"] = pd.DataFrame({
+            "Amélioration": AMELIORATIONS_DEFAUT,
+            "Descriptif": [""] * len(AMELIORATIONS_DEFAUT),
+        })
+    if "recap_vals" not in ss:
+        ss["recap_vals"] = {}   # { amélioration: { variante: bool } }
 
 
-def _synchroniser_colonnes(df: pd.DataFrame, noms_variantes: list[str]) -> pd.DataFrame:
-    """Ajoute/retire les colonnes de variantes pour coller aux variantes chargées."""
-    if "Caractéristique" not in df.columns:
-        df.insert(0, "Caractéristique", CARACTERISTIQUES_DEFAUT[:len(df)])
-    # Ajouter les variantes manquantes
-    for nom in noms_variantes:
-        if nom not in df.columns:
-            df[nom] = False
-    # Retirer les colonnes qui ne correspondent plus à une variante
-    cols = ["Caractéristique"] + [n for n in noms_variantes]
-    df = df[[c for c in cols if c in df.columns]]
+def liste_ameliorations() -> list[str]:
+    """Noms d'améliorations (source = tableau descriptif), nettoyés et non vides."""
+    _init_state()
+    df = st.session_state["ameliorations"]
+    return [str(a).strip() for a in df["Amélioration"].tolist() if str(a).strip()]
+
+
+def construire_recap(noms_variantes: list[str]) -> pd.DataFrame:
+    """DataFrame récap : index = améliorations, colonnes = variantes (bool)."""
+    ams = liste_ameliorations()
+    vals = st.session_state.get("recap_vals", {})
+    data = {v: [bool(vals.get(a, {}).get(v, False)) for a in ams] for v in noms_variantes}
+    df = pd.DataFrame(data, index=ams)
+    df.index.name = "Amélioration"
     return df
 
 
 def render_description_variantes(variantes: list):
-    """Tableau éditable : lignes = caractéristiques, colonnes = variantes, cases à cocher."""
     st.header("Description des variantes")
 
     if not variantes:
         st.info("Chargez au moins une variante pour décrire ses caractéristiques.")
         return
 
-    noms = [v.nom for v in variantes]
-
-    st.caption(
-        "Décrivez ce qui distingue chaque variante : cochez les caractéristiques présentes. "
-        "Ajoutez vos propres lignes (bouton + en bas du tableau), renommez-les librement. "
-        "Ce tableau est enregistré avec le projet."
-    )
-
+    _init_state()
     ss = st.session_state
-    sig = tuple(noms)
+    noms = [v.nom for v in variantes]
+    ams = liste_ameliorations()
 
-    # IMPORTANT pour la fluidité : la donnée PASSÉE à l'éditeur ("_desc_base")
-    # doit rester STABLE entre les reruns. Streamlit applique lui-même les
-    # éditions (stockées sous la clé du widget) par-dessus cette base. Si on
-    # réinjecte le résultat édité dans la base à chaque rerun, l'éditeur se
-    # réinitialise et la sélection « saute » sur des clics rapides.
-    # On ne reconstruit la base QUE si la liste des variantes change.
-    if "_desc_base" not in ss or ss["_desc_base"] is None:
-        src = ss.get("descriptions")
-        ss["_desc_base"] = (_synchroniser_colonnes(src.copy(), noms)
-                            if src is not None else _table_vierge(noms))
-        ss["_desc_sig"] = sig
-    elif ss.get("_desc_sig") != sig:
-        # repartir des dernières éditions connues, puis réajuster les colonnes
-        src = ss.get("descriptions", ss["_desc_base"])
-        ss["_desc_base"] = _synchroniser_colonnes(src.copy(), noms)
-        ss["_desc_sig"] = sig
-        ss.pop("editor_descriptions", None)  # reset du widget sur la nouvelle base
+    # ------------------------------------------------------------------
+    # 1. Tableau récapitulatif (cases à cocher) — lignes dérivées des améliorations
+    # ------------------------------------------------------------------
+    st.subheader("Récapitulatif des améliorations par variante")
+    st.caption("Cochez les améliorations présentes dans chaque variante. "
+               "Les améliorations se gèrent dans le tableau « Descriptif » ci-dessous.")
 
-    col_config = {"Caractéristique": st.column_config.TextColumn(
-        "Caractéristique", width="large", required=True)}
-    for nom in noms:
-        col_config[nom] = st.column_config.CheckboxColumn(nom, default=False)
+    # Base STABLE passée à l'éditeur : reconstruite seulement si la structure
+    # (améliorations ou variantes) change → édition fluide des cases.
+    sig = (tuple(ams), tuple(noms))
+    if ss.get("_recap_sig") != sig or "recap_base" not in ss:
+        base = construire_recap(noms).reset_index()
+        ss["recap_base"] = base
+        ss["_recap_sig"] = sig
+        ss.pop("ed_recap", None)
 
-    edited = st.data_editor(
-        ss["_desc_base"],                 # base stable
-        column_config=col_config,
-        num_rows="dynamic",
-        use_container_width=True,
-        hide_index=True,
-        key="editor_descriptions",
+    col_cfg = {"Amélioration": st.column_config.TextColumn("Amélioration", disabled=True,
+                                                           width="large")}
+    for v in noms:
+        col_cfg[v] = st.column_config.CheckboxColumn(v, default=False)
+
+    if ams:
+        edited_recap = st.data_editor(
+            ss["recap_base"], column_config=col_cfg, num_rows="fixed",
+            hide_index=True, use_container_width=True, key="ed_recap",
+        )
+        # Mémoriser l'état des cases (par nom d'amélioration)
+        vals = {}
+        for _, row in edited_recap.iterrows():
+            a = str(row["Amélioration"]).strip()
+            if a:
+                vals[a] = {v: bool(row.get(v, False)) for v in noms}
+        ss["recap_vals"] = vals
+    else:
+        st.info("Ajoutez des améliorations dans le tableau « Descriptif » ci-dessous.")
+
+    st.divider()
+
+    # ------------------------------------------------------------------
+    # 2. Tableau descriptif (source des améliorations + description libre)
+    # ------------------------------------------------------------------
+    st.subheader("Descriptif des améliorations")
+    st.caption("Ajoutez, renommez ou supprimez des améliorations (bouton + en bas) "
+               "et décrivez-les. Les modifications se répercutent dans le récapitulatif.")
+
+    if "desc_base" not in ss or ss["desc_base"] is None:
+        ss["desc_base"] = ss["ameliorations"].copy()
+
+    edited_desc = st.data_editor(
+        ss["desc_base"],
+        column_config={
+            "Amélioration": st.column_config.TextColumn("Amélioration", required=True,
+                                                        width="medium"),
+            "Descriptif": st.column_config.TextColumn("Descriptif", width="large"),
+        },
+        num_rows="dynamic", hide_index=True, use_container_width=True, key="ed_desc",
     )
-    # Donnée courante (pour la sauvegarde projet) — NE PAS la réinjecter dans la base
-    ss["descriptions"] = edited
+    ss["ameliorations"] = edited_desc
 
-    # Export CSV
-    csv = edited.to_csv(index=False).encode("utf-8-sig")
-    st.download_button("⬇️ Exporter le tableau (CSV)", data=csv,
-                       file_name="description_variantes.csv", mime="text/csv",
-                       key="dl_descriptions")
+    # Export CSV des deux tables
+    c1, c2 = st.columns(2)
+    c1.download_button("⬇️ Récapitulatif (CSV)",
+                       data=construire_recap(noms).to_csv().encode("utf-8-sig"),
+                       file_name="recap_ameliorations.csv", mime="text/csv",
+                       key="dl_recap")
+    c2.download_button("⬇️ Descriptif (CSV)",
+                       data=edited_desc.to_csv(index=False).encode("utf-8-sig"),
+                       file_name="descriptif_ameliorations.csv", mime="text/csv",
+                       key="dl_desc")

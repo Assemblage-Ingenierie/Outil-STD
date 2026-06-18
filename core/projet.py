@@ -53,7 +53,9 @@ def sauvegarder_projet(chemin: str | Path, etat: dict) -> Path:
         "nom_projet": etat.get("nom_projet", ""),
         "params": etat.get("params", {}),
         "variantes": variantes_ser,
-        "descriptions": etat.get("descriptions"),
+        "ameliorations": etat.get("ameliorations"),
+        "recap_vals": etat.get("recap_vals"),
+        "descriptions": etat.get("descriptions"),  # rétro-compat anciens projets
         "selections": etat.get("selections", {}),
     }
 
@@ -95,6 +97,8 @@ def charger_projet(chemin: str | Path) -> dict:
         "nom_projet": bundle.get("nom_projet", ""),
         "params": bundle.get("params", {}),
         "variantes": variantes,
+        "ameliorations": bundle.get("ameliorations"),
+        "recap_vals": bundle.get("recap_vals"),
         "descriptions": bundle.get("descriptions"),
         "selections": bundle.get("selections", {}),
     }

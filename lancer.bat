@@ -12,6 +12,12 @@ echo.
 
 cd /d "%~dp0"
 
+REM Liberer le port 8501 si un ancien serveur tourne encore (evite le
+REM "serveur fantome" qui sert du code obsolete apres une mise a jour).
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8501 ^| findstr LISTENING') do (
+    taskkill /F /PID %%a >nul 2>&1
+)
+
 REM Recherche de Python : py launcher, puis python du PATH
 where py >nul 2>&1
 if %errorlevel%==0 (
