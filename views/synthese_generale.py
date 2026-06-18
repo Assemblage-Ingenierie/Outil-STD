@@ -7,7 +7,7 @@ from views.widgets import persist_multiselect
 
 
 def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
-                             config: dict, methode: str = "givoni"):
+                             config: dict, methode: str = "givoni", dh_on: bool = False):
     """Tableau de synthèse au niveau bâtiment : une ligne par variante."""
     if not variantes:
         st.info("Chargez au moins une variante dans le panneau latéral.")
@@ -24,10 +24,13 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
         st.warning("Sélectionnez au moins une variante.")
         return
 
+    dh_col = f"DH > {seuil_t1:.0f}°C (°C·h)"
     # -- Tableau : une ligne par variante --
     rows = []
     for var in variantes_sel:
         ind = var.indicateurs_batiment(config, methode)
+        if dh_on:
+            ind[dh_col] = var.dh_batiment(seuil_t1)
         rows.append({'Variante': var.nom, **ind})
     df = pd.DataFrame(rows).set_index('Variante')
 
@@ -39,6 +42,8 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
         'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
         **{c: '{:.1f} %' for c in cols_pct},
     }
+    if dh_on:
+        fmt[dh_col] = '{:.0f}'
 
     def _style_na(col):
         return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'

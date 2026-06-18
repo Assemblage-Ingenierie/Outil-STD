@@ -9,7 +9,7 @@ from config.charte import COULEURS_VARIANTES, GRILLE, PLOTLY_LAYOUT
 
 
 def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
-                      config: dict, methode: str = "givoni"):
+                      config: dict, methode: str = "givoni", dh_on: bool = False):
     """Affiche l'analyse détaillée d'une zone pour toutes les variantes."""
     from charts.temperature import (
         graphique_temp_horaire,
@@ -60,6 +60,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             f'H > {seuil_t2}°C': var.heures_dessus_seuil(zone, seuil_t2),
             f'% hors {lib} 0 m/s': var.pct_hors_confort(zone, config, 0.0, methode),
             f'% hors {lib} 1 m/s': var.pct_hors_confort(zone, config, 1.0, methode),
+            **({f'DH > {seuil_t1:.0f}°C (°C·h)': var.degre_heures(zone, seuil_t1)} if dh_on else {}),
             'Occupation (h/an)': var.heures_occupation(zone),
             'Météo': var.meteo_affiche() or '—',
         })
@@ -70,11 +71,15 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
         return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
                 if v != v else '' for v in col]
 
+    fmt_focus = {
+        'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
+        **{c: '{:.1f} %' for c in cols_pct},
+    }
+    for c in df_cmp.columns:
+        if c.startswith('DH'):
+            fmt_focus[c] = '{:.0f}'
     st.dataframe(
-        df_cmp.style.format({
-            'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
-            **{c: '{:.1f} %' for c in cols_pct},
-        }, na_rep='NA')
+        df_cmp.style.format(fmt_focus, na_rep='NA')
         .background_gradient(subset=cols_pct, cmap='YlOrRd')
         .apply(_style_na, subset=cols_pct),
         use_container_width=True,

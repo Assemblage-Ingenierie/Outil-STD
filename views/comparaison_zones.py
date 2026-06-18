@@ -9,7 +9,7 @@ from views.widgets import persist_multiselect, persist_selectbox
 
 
 def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
-                             config: dict, methode: str = "givoni"):
+                             config: dict, methode: str = "givoni", dh_on: bool = False):
     """Comparaison d'un échantillon de zones sur une variante sélectionnée."""
     from charts.temperature import (
         graphique_temp_min_moy_max,
@@ -59,12 +59,16 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
             f'H > {seuil_t2}°C': var.heures_dessus_seuil(zone, seuil_t2),
             f'% hors {lib} 0 m/s': var.pct_hors_confort(zone, config, 0.0, methode),
             f'% hors {lib} 1 m/s': var.pct_hors_confort(zone, config, 1.0, methode),
+            **({f'DH > {seuil_t1:.0f}°C (°C·h)': var.degre_heures(zone, seuil_t1)} if dh_on else {}),
         })
 
     df_comp = pd.DataFrame(rows)
     cols_pct_list = [c for c in df_comp.columns if c.startswith('% hors')]
     cols_couleur = [c for c in df_comp.columns if c.startswith('H >')] + cols_pct_list
     cols_pct = {c: '{:.1f} %' for c in cols_pct_list}
+    for c in df_comp.columns:
+        if c.startswith('DH'):
+            cols_pct[c] = '{:.0f}'
 
     def _style_na(col):
         return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'

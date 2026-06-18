@@ -64,3 +64,55 @@ def persist_selectbox(label, options, store_key, defaut_index=0, **kwargs):
     sel = st.selectbox(label, options, index=idx, key=store_key + "_w", **kwargs)
     st.session_state[store_key] = sel
     return sel
+
+
+def persist_number(label, store_key, default, **kwargs):
+    """number_input dont la valeur survit aux changements d'onglet."""
+    ss = st.session_state
+    if store_key not in ss:
+        ss[store_key] = default
+    wkey = store_key + "_w"
+    if wkey not in ss:
+        ss[wkey] = ss[store_key]
+    val = st.number_input(label, key=wkey, **kwargs)
+    ss[store_key] = val
+    return val
+
+
+def persist_radio(label, options, store_key, default=None, **kwargs):
+    """radio dont la valeur survit aux changements d'onglet."""
+    ss = st.session_state
+    if store_key not in ss:
+        ss[store_key] = default if default is not None else options[0]
+    wkey = store_key + "_w"
+    if wkey not in ss or ss[wkey] not in options:
+        ss[wkey] = ss[store_key] if ss[store_key] in options else options[0]
+    val = st.radio(label, options, key=wkey, **kwargs)
+    ss[store_key] = val
+    return val
+
+
+def persist_checkbox(label, store_key, default=False, **kwargs):
+    """checkbox dont la valeur survit aux changements d'onglet."""
+    ss = st.session_state
+    if store_key not in ss:
+        ss[store_key] = default
+    wkey = store_key + "_w"
+    if wkey not in ss:
+        ss[wkey] = ss[store_key]
+    val = st.checkbox(label, key=wkey, **kwargs)
+    ss[store_key] = val
+    return val
+
+
+def persist_text(label, store_key, default="", **kwargs):
+    """text_input dont la valeur survit aux changements d'onglet."""
+    ss = st.session_state
+    if store_key not in ss:
+        ss[store_key] = default
+    wkey = store_key + "_w"
+    if wkey not in ss:
+        ss[wkey] = ss[store_key]
+    val = st.text_input(label, key=wkey, **kwargs)
+    ss[store_key] = val
+    return val

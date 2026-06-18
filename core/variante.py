@@ -144,6 +144,39 @@ class Variante:
         dedans = confort.dans_zone(t.values[:n], w.values[:n], config, methode, vitesse)
         return int((~dedans).sum())
 
+    def degre_heures(self, zone: str, seuil: float) -> float:
+        """
+        Degré-heures d'inconfort chaud : somme des écarts (T intérieure − seuil)
+        pour les heures d'OCCUPATION où T > seuil (en °C·h). Mesure la SÉVÉRITÉ
+        de l'inconfort, pas seulement sa fréquence.
+        NaN si le local n'a aucune heure d'occupation.
+        """
+        t = self.col_temp(zone)
+        occ = self.col_apports_occupants(zone)
+        if t.empty or occ.empty:
+            return np.nan
+        n = min(len(t), len(occ))
+        occupe = occ.values[:n] > 0
+        if not occupe.any():
+            return np.nan
+        ecarts = np.maximum(0.0, t.values[:n][occupe] - seuil)
+        return float(ecarts.sum())
+
+    def dh_batiment(self, seuil: float, zones: list[str] | None = None) -> float:
+        """Degré-heures moyen du bâtiment, pondéré par la surface des zones."""
+        zones = zones if zones is not None else self.zones
+        num = den = 0.0
+        for z in zones:
+            dh = self.degre_heures(z, seuil)
+            if dh != dh:   # NaN
+                continue
+            syn = self.synthese_zone(z)
+            surf = (syn.get('surface_m2', np.nan) if syn else np.nan)
+            w = surf if (surf == surf and surf > 0) else 1.0
+            num += dh * w
+            den += w
+        return (num / den) if den else np.nan
+
     def heures_occupation(self, zone: str) -> int:
         """
         Nombre d'heures d'occupation, déduit des apports d'occupants (> 0).

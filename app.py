@@ -15,39 +15,13 @@ st.set_page_config(
 )
 
 # -- Imports internes --
-from core.variante import charger_variante, Variante
-from core.slk_parser import FichierInvalideError
 from views.synthese_generale import render_synthese_generale
 from views.focus_zone import render_focus_zone
 from views.comparaison_zones import render_comparaison_zones
 from views.description_variantes import render_description_variantes
+from views.reglages import render_reglages
 from core.file_picker import choisir_fichier, enregistrer_fichier
 from core import projet as projet_io
-import dataclasses
-
-
-def _mtime(path: str) -> float:
-    try:
-        return Path(path).stat().st_mtime if path else 0.0
-    except OSError:
-        return 0.0
-
-
-@st.cache_data(show_spinner=False, max_entries=12)
-def _charger_variante_cache(res: str, syn: str, met: str,
-                            res_m: float, syn_m: float, met_m: float) -> Variante:
-    """
-    Chargement mis en cache par (chemins + dates de modification). Recharger
-    un même fichier (ex. après suppression/ré-ajout) est alors instantané.
-    Le nom de variante n'entre pas dans la clé : on l'affecte après coup.
-    """
-    return charger_variante("", res, syn, met)
-
-
-def charger_variante_rapide(nom: str, res: str, syn: str, met: str) -> Variante:
-    var = _charger_variante_cache(res, syn, met, _mtime(res), _mtime(syn), _mtime(met))
-    # Copie légère (DataFrames partagés en lecture) avec le bon nom
-    return dataclasses.replace(var, nom=nom)
 
 # -- Chemins --
 BASE_DIR = Path(__file__).parent
@@ -96,30 +70,6 @@ st.markdown("""
         border-radius: 4px;
     }
     .stButton>button:hover { background-color: #B0040F; }
-
-    /* Bouton bascule du panneau d'ajout : flèche fine, sans fond */
-    .st-key-toggle_form_ajout button {
-        background: transparent !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        padding: 0 !important;
-        min-height: 1.4rem !important;
-        line-height: 1 !important;
-        font-size: 1.1rem !important;
-        box-shadow: none !important;
-    }
-    .st-key-toggle_form_ajout button:hover {
-        background: transparent !important;
-        color: #E30513 !important;
-    }
-
-    .metric-card {
-        background: #F2F2F2;
-        border-left: 4px solid #E30513;
-        padding: 12px 16px;
-        border-radius: 4px;
-        margin: 4px 0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -132,11 +82,22 @@ if 'config_projet' not in st.session_state:
         st.session_state.config_projet = toml.load(CONFIG_DEFAULT)
     else:
         st.session_state.config_projet = {}
+# Valeurs de configuration (éditées dans l'onglet Réglages, lues par les vues)
+st.session_state.setdefault('cfg_seuil_t1', 26.0)
+st.session_state.setdefault('cfg_seuil_t2', 28.0)
+st.session_state.setdefault('cfg_methode', 'givoni')
+st.session_state.setdefault('cfg_dh_on', False)
+st.session_state.setdefault('cfg_nom_projet',
+                            st.session_state.config_projet.get('projet', {}).get('nom', ''))
 
+# Appliquer les libellés météo aux variantes (tableaux/graphiques/rapport)
+_labels = st.session_state.get('meteo_labels', {})
+for _v in st.session_state.variantes:
+    _v.meteo_label = _labels.get(_v.meteo_nom, '')
 
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR (minimale) : variantes chargées + projet
 # ============================================================
 with st.sidebar:
     logo_path = ASSETS_DIR / 'logos' / 'logo_Ai_blanc_HD.png'
@@ -145,220 +106,34 @@ with st.sidebar:
     else:
         st.markdown("## Assemblage ingénierie")
 
-    st.markdown("---")
     st.markdown("### 🏗️ Outil STD")
-
-    st.markdown("### Paramètres projet")
-
-    nom_projet = st.text_input(
-        "Nom du projet",
-        value=st.session_state.config_projet.get('projet', {}).get('nom', ''),
-        key="nom_projet"
-    )
-    st.session_state.config_projet.setdefault('projet', {})['nom'] = nom_projet
-
+    st.caption("Réglages, ajout de variantes et export : onglet **Réglages**.")
     st.markdown("---")
-    st.markdown("### Seuils de température")
 
-    seuil_t1 = st.number_input("Seuil T1 (°C)", value=26.0, step=0.5, min_value=15.0, max_value=40.0, key="seuil_t1")
-    seuil_t2 = st.number_input("Seuil T2 (°C)", value=28.0, step=0.5, min_value=15.0, max_value=45.0, key="seuil_t2")
-
-    st.markdown("---")
-    st.markdown("### Modèle de confort")
-    methode_label = st.radio(
-        "Diagramme bioclimatique",
-        ["Givoni", "COCO (tropical)"],
-        key="methode_confort",
-        help="Givoni : diagramme classique (4 zones par vitesse d'air). "
-             "COCO : adaptation pour climat tropical humide (Antilles, Réunion, Mayotte).",
-    )
-    methode = "coco" if methode_label.startswith("COCO") else "givoni"
-
-    # -- Bornes Givoni éditables (gestion dynamique) --
-    if methode == "givoni":
-        with st.expander("⚙️ Bornes Givoni (avancé)"):
-            gc = st.session_state.config_projet.setdefault('givoni', {})
-            t_min = st.number_input(
-                "Température min confort (°C)", value=float(gc.get('t_confort_min', 20.0)),
-                step=0.5, min_value=10.0, max_value=25.0, key="giv_t_min")
-            st.caption("Seuils HR max par zone (vitesse d'air) :")
-            c1, c2 = st.columns(2)
-            hr0 = c1.number_input("HR max 0 m/s (%)", value=80.0, step=1.0, min_value=50.0, max_value=100.0, key="giv_hr0")
-            hr1 = c2.number_input("HR max 0,5 m/s (%)", value=85.0, step=1.0, min_value=50.0, max_value=100.0, key="giv_hr05")
-            hr2 = c1.number_input("HR max 1 m/s (%)", value=90.0, step=1.0, min_value=50.0, max_value=100.0, key="giv_hr1")
-            hr3 = c2.number_input("HR max 1,5 m/s (%)", value=95.0, step=1.0, min_value=50.0, max_value=100.0, key="giv_hr15")
-            gc['t_confort_min'] = t_min
-            gc['hr_max_zones'] = [hr0, hr1, hr2, hr3]
-    else:
-        st.caption("Zones COCO : standard tropical (non éditable).")
-
-    st.markdown("---")
-    st.markdown("### Météo par défaut du projet")
-    if 'meteo_projet' not in st.session_state:
-        st.session_state['meteo_projet'] = ''
-    if st.button("📂 Définir la météo par défaut (.try)", key="btn_meteo_projet",
-                 use_container_width=True):
-        chemin = choisir_fichier("Météo par défaut du projet",
-                                 [("Fichiers météo", "*.try"), ("Tous", "*.*")])
-        if chemin:
-            st.session_state['meteo_projet'] = chemin
-            st.rerun()
-    if st.session_state['meteo_projet']:
-        cmp1, cmp2 = st.columns([4, 1])
-        cmp1.caption(f"🌤️ {Path(st.session_state['meteo_projet']).name}")
-        if cmp2.button("✕", key="clear_meteo_projet", help="Retirer la météo par défaut"):
-            st.session_state['meteo_projet'] = ''
-            st.rerun()
-    else:
-        st.caption("Aucune — sera demandée par variante.")
-    st.caption("Pré-remplie pour chaque nouvelle variante ; surchargeable individuellement.")
-
-    st.markdown("---")
-    st.markdown("### Variantes")
-
-    # Stockage des chemins sélectionnés via le sélecteur natif
-    for k in ('sel_resultats', 'sel_synthese', 'sel_meteo'):
-        if k not in st.session_state:
-            st.session_state[k] = ''
-
-    # Panneau d'ajout contrôlé par un drapeau (et non par st.expander, dont
-    # l'état d'ouverture n'est pas fiable après interaction). Reste ouvert
-    # pendant toute la sélection des fichiers.
-    if 'form_ajout' not in st.session_state:
-        st.session_state['form_ajout'] = (len(st.session_state.variantes) == 0)
-
-    fleche = "⌃" if st.session_state['form_ajout'] else "⌄"
-    if st.button(fleche, key="toggle_form_ajout",
-                 help="Fermer l'ajout" if st.session_state['form_ajout'] else "Ajouter une variante"):
-        st.session_state['form_ajout'] = not st.session_state['form_ajout']
-        st.rerun()
-
-    if st.session_state['form_ajout']:
-      with st.container(border=True):
-        nom_var = st.text_input("Nom de la variante", value="Variante 1", key="nom_var_input")
-
-        st.caption("Sélectionnez vos fichiers (aucune limite de taille)")
-
-        # --- Résultats ---
-        if st.button("📂 Résultats (.slk)", key="btn_pick_resultats", use_container_width=True):
-            chemin = choisir_fichier("Sélectionner le fichier Résultats",
-                                     [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
-            if chemin:
-                st.session_state.sel_resultats = chemin
-                st.rerun()   # ré-affiche le panneau ouvert avec le fichier sélectionné
-        if st.session_state.sel_resultats:
-            st.caption(f"✓ {Path(st.session_state.sel_resultats).name}")
-
-        # --- Synthèse ---
-        if st.button("📂 Synthèse (.slk)", key="btn_pick_synthese", use_container_width=True):
-            chemin = choisir_fichier("Sélectionner le fichier Synthèse",
-                                     [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
-            if chemin:
-                st.session_state.sel_synthese = chemin
-                st.rerun()
-        if st.session_state.sel_synthese:
-            st.caption(f"✓ {Path(st.session_state.sel_synthese).name}")
-
-        # --- Météo : par défaut = météo projet, surchargeable ---
-        meteo_projet = st.session_state.get('meteo_projet', '')
-        if st.button("📂 Météo spécifique (.try)", key="btn_pick_meteo", use_container_width=True):
-            chemin = choisir_fichier("Météo spécifique à cette variante",
-                                     [("Fichiers météo", "*.try"), ("Tous", "*.*")])
-            if chemin:
-                st.session_state.sel_meteo = chemin
-                st.rerun()
-        if st.session_state.sel_meteo:
-            mc1, mc2 = st.columns([4, 1])
-            mc1.caption(f"✓ {Path(st.session_state.sel_meteo).name} (spécifique)")
-            if mc2.button("↺", key="reset_meteo_var", help="Revenir à la météo du projet"):
-                st.session_state.sel_meteo = ''
-                st.rerun()
-        elif meteo_projet:
-            st.caption(f"✓ {Path(meteo_projet).name} (météo projet)")
-        else:
-            st.caption("Aucune météo — Givoni/confort indisponibles.")
-
-        path_r_input = st.session_state.sel_resultats
-        path_s_input = st.session_state.sel_synthese
-        # Override spécifique sinon météo projet
-        path_m_input = st.session_state.sel_meteo or meteo_projet
-
-        if st.button("Charger la variante", key="btn_charger", type="primary"):
-            if not path_r_input or not path_s_input:
-                st.error("Les fichiers Résultats et Synthèse sont obligatoires.")
-            elif not Path(path_r_input).exists():
-                st.error(f"Fichier introuvable : {path_r_input}")
-            elif not Path(path_s_input).exists():
-                st.error(f"Fichier introuvable : {path_s_input}")
-            elif path_m_input and not Path(path_m_input).exists():
-                st.error(f"Fichier météo introuvable : {path_m_input}")
-            elif any(v.nom == nom_var for v in st.session_state.variantes):
-                st.error(f"Une variante '{nom_var}' existe déjà.")
-            else:
-                with st.spinner(f"Chargement de '{nom_var}'... (peut prendre 30-60s pour les gros fichiers)"):
-                    try:
-                        var = charger_variante_rapide(
-                            nom_var, path_r_input, path_s_input, path_m_input or '')
-                        st.session_state.variantes.append(var)
-                        # Réinitialiser les sélections et fermer le panneau
-                        st.session_state.sel_resultats = ''
-                        st.session_state.sel_synthese = ''
-                        st.session_state.sel_meteo = ''
-                        st.session_state['form_ajout'] = False
-                        st.success(f"✅ '{nom_var}' chargée ({len(var.zones)} zones)")
-                        st.rerun()
-                    except FichierInvalideError as e:
-                        st.error("⛔ Fichier non conforme")
-                        st.warning(str(e))
-                    except Exception as e:
-                        st.error(f"Erreur : {e}")
-
-    # Liste des variantes chargées (réordonnables ↑/↓ — l'ordre s'applique
-    # à tous les tableaux et graphiques)
     vs = st.session_state.variantes
+    st.markdown("### Variantes chargées")
     if vs:
-        st.markdown("**Variantes chargées** (↑/↓ pour réordonner) :")
+        st.caption("↑/↓ pour réordonner, ✕ pour retirer.")
         for i, var in enumerate(vs):
             c_nom, c_up, c_down, c_del = st.columns([5, 1, 1, 1])
             with c_nom:
                 st.markdown(f"• {var.nom} ({len(var.zones)} zones)")
             with c_up:
-                if st.button("↑", key=f"up_var_{i}", disabled=(i == 0),
-                             help="Monter"):
+                if st.button("↑", key=f"up_var_{i}", disabled=(i == 0), help="Monter"):
                     vs[i - 1], vs[i] = vs[i], vs[i - 1]
                     st.rerun()
             with c_down:
-                if st.button("↓", key=f"down_var_{i}", disabled=(i == len(vs) - 1),
-                             help="Descendre"):
+                if st.button("↓", key=f"down_var_{i}", disabled=(i == len(vs) - 1), help="Descendre"):
                     vs[i + 1], vs[i] = vs[i], vs[i + 1]
                     st.rerun()
             with c_del:
                 if st.button("✕", key=f"del_var_{i}", help="Retirer"):
                     vs.pop(i)
                     st.rerun()
-
-    # -- Renommer les fichiers météo (libellés conviviaux) --
-    if 'meteo_labels' not in st.session_state:
-        st.session_state['meteo_labels'] = {}
-    fichiers_meteo = sorted({v.meteo_nom for v in vs if v.meteo_nom})
-    if fichiers_meteo:
-        with st.expander("🌤️ Renommer les météos"):
-            st.caption("Libellé affiché dans les tableaux et graphiques "
-                       "(ex. « Climat actuel », « RCP 8.5 »).")
-            for f in fichiers_meteo:
-                lbl = st.text_input(
-                    f, value=st.session_state['meteo_labels'].get(f, ''),
-                    key=f"meteolbl_{f}", placeholder=f)
-                st.session_state['meteo_labels'][f] = lbl.strip()
-
-    # Appliquer les libellés à toutes les variantes (tableaux/graphiques/rapport)
-    _labels = st.session_state.get('meteo_labels', {})
-    for v in vs:
-        v.meteo_label = _labels.get(v.meteo_nom, '')
+    else:
+        st.caption("Aucune variante. Ajoutez-en dans l'onglet **Réglages**.")
 
     st.markdown("---")
-
-    # -- Projet : enregistrer / ouvrir --
     st.markdown("### 💾 Projet")
     cpa, cpb = st.columns(2)
     with cpa:
@@ -366,18 +141,18 @@ with st.sidebar:
             if not st.session_state.variantes:
                 st.warning("Aucune variante à enregistrer.")
             else:
+                nomp = st.session_state.get('cfg_nom_projet', '') or "projet"
                 chemin = enregistrer_fichier(
-                    "Enregistrer le projet STD",
-                    [("Projet STD", "*.stdproj")],
-                    extension_defaut=".stdproj",
-                    nom_defaut=(nom_projet or "projet") + ".stdproj",
-                )
+                    "Enregistrer le projet STD", [("Projet STD", "*.stdproj")],
+                    extension_defaut=".stdproj", nom_defaut=nomp + ".stdproj")
                 if chemin:
                     try:
                         etat = {
-                            'nom_projet': nom_projet,
-                            'params': {'seuil_t1': seuil_t1, 'seuil_t2': seuil_t2,
-                                       'methode': methode, 'config': st.session_state.config_projet},
+                            'nom_projet': st.session_state.get('cfg_nom_projet', ''),
+                            'params': {'seuil_t1': st.session_state.get('cfg_seuil_t1'),
+                                       'seuil_t2': st.session_state.get('cfg_seuil_t2'),
+                                       'methode': st.session_state.get('cfg_methode'),
+                                       'config': st.session_state.config_projet},
                             'variantes': st.session_state.variantes,
                             'ameliorations': st.session_state.get('ameliorations'),
                             'recap_vals': st.session_state.get('recap_vals'),
@@ -386,7 +161,7 @@ with st.sidebar:
                                            if k.startswith('sel_')},
                         }
                         p = projet_io.sauvegarder_projet(chemin, etat)
-                        st.success(f"✅ Projet enregistré : {p.name}")
+                        st.success(f"✅ Enregistré : {p.name}")
                     except Exception as e:
                         st.error(f"Erreur enregistrement : {e}")
     with cpb:
@@ -397,77 +172,33 @@ with st.sidebar:
                 try:
                     charge = projet_io.charger_projet(chemin)
                     st.session_state.variantes = charge['variantes']
-                    st.session_state.config_projet = charge['params'].get('config', st.session_state.config_projet)
+                    st.session_state.config_projet = charge['params'].get(
+                        'config', st.session_state.config_projet)
+                    prm = charge.get('params', {})
+                    if prm.get('seuil_t1') is not None:
+                        st.session_state['cfg_seuil_t1'] = prm['seuil_t1']
+                    if prm.get('seuil_t2') is not None:
+                        st.session_state['cfg_seuil_t2'] = prm['seuil_t2']
+                    if prm.get('methode'):
+                        st.session_state['cfg_methode'] = prm['methode']
+                    st.session_state['cfg_nom_projet'] = charge.get('nom_projet', '')
                     if charge.get('ameliorations') is not None:
                         st.session_state['ameliorations'] = charge['ameliorations']
                     if charge.get('recap_vals') is not None:
                         st.session_state['recap_vals'] = charge['recap_vals']
                     if charge.get('meteo_labels') is not None:
                         st.session_state['meteo_labels'] = charge['meteo_labels']
-                    # Forcer les éditeurs de la page Variantes à reprendre les données chargées
-                    for k in ('desc_base', 'recap_base', '_recap_sig', 'ed_desc', 'ed_recap'):
+                    # Réinitialiser les widgets dont la base dépend des données chargées
+                    for k in ('desc_base', 'recap_base', '_recap_sig', 'ed_desc', 'ed_recap',
+                              'cfg_nom_projet_w', 'cfg_seuil_t1_w', 'cfg_seuil_t2_w',
+                              'cfg_methode_label_w'):
                         st.session_state.pop(k, None)
-                    # Restaurer les sélections persistantes
                     for k, v in (charge.get('selections') or {}).items():
                         st.session_state[k] = v
-                    st.session_state['_projet_charge'] = charge.get('nom_projet', '')
-                    st.success(f"✅ Projet ouvert : {charge.get('nom_projet','')}")
+                    st.success(f"✅ Projet ouvert : {charge.get('nom_projet', '')}")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erreur ouverture : {e}")
-
-    st.markdown("---")
-
-    # -- Export rapport --
-    st.markdown("### Export rapport Word")
-    st.caption("Le rapport reprend les sélections faites dans les vues "
-               "(variantes, zone de focus, échantillon de zones).")
-
-    if st.button("📄 Générer rapport Word", key="btn_rapport"):
-        if not st.session_state.variantes:
-            st.error("Chargez au moins une variante.")
-        else:
-            # Récupérer les sélections faites dans les différentes vues
-            ss = st.session_state
-            variantes_rapport = [v for v in ss.variantes
-                                 if v.nom in ss.get('sel_syn_variantes', [v.nom for v in ss.variantes])]
-            if not variantes_rapport:
-                variantes_rapport = ss.variantes
-
-            zone_focus = ss.get('sel_focus_zone')
-            zones_focus_rapport = [zone_focus] if zone_focus else []
-            zones_comp_rapport = ss.get('sel_comp_zones', [])
-
-            # Tableaux de description des variantes (récap + descriptif)
-            from views.description_variantes import construire_recap, liste_ameliorations
-            noms_rapport = [v.nom for v in variantes_rapport]
-            df_recap = construire_recap(noms_rapport)
-            df_detail = ss.get('ameliorations')
-
-            with st.spinner("Génération du rapport..."):
-                try:
-                    from export.word_report import generer_rapport
-                    buf = generer_rapport(
-                        variantes=variantes_rapport,
-                        config=st.session_state.config_projet,
-                        seuil_t1=seuil_t1,
-                        seuil_t2=seuil_t2,
-                        zones_focus=zones_focus_rapport,
-                        zones_comparaison=zones_comp_rapport,
-                        nom_projet=nom_projet,
-                        methode=methode,
-                        df_recap=df_recap,
-                        df_detail=df_detail,
-                    )
-                    st.download_button(
-                        "⬇️ Télécharger le rapport",
-                        data=buf,
-                        file_name=f"rapport_STD_{nom_projet.replace(' ','_')}.docx",
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key="dl_rapport"
-                    )
-                except Exception as e:
-                    st.error(f"Erreur rapport : {e}")
 
 
 # ============================================================
@@ -475,25 +206,27 @@ with st.sidebar:
 # ============================================================
 variantes = st.session_state.variantes
 config = st.session_state.config_projet
+seuil_t1 = st.session_state.get('cfg_seuil_t1', 26.0)
+seuil_t2 = st.session_state.get('cfg_seuil_t2', 28.0)
+methode = st.session_state.get('cfg_methode', 'givoni')
+dh_on = st.session_state.get('cfg_dh_on', False)
 
-VUES = ["Synthèse générale", "Focus zone", "Comparaison zones", "Variantes"]
+VUES = ["Synthèse générale", "Focus zone", "Comparaison zones", "Variantes", "Réglages"]
 if hasattr(st, "segmented_control"):
     vue = st.segmented_control("Vue", VUES, default="Synthèse générale",
                                key="nav_vue", label_visibility="collapsed")
 else:
-    vue = st.radio("Vue", VUES, horizontal=True, key="nav_vue",
-                   label_visibility="collapsed")
+    vue = st.radio("Vue", VUES, horizontal=True, key="nav_vue", label_visibility="collapsed")
 if not vue:
     vue = "Synthèse générale"
 
 if vue == "Synthèse générale":
-    render_synthese_generale(variantes, seuil_t1, seuil_t2, config, methode)
-
+    render_synthese_generale(variantes, seuil_t1, seuil_t2, config, methode, dh_on)
 elif vue == "Focus zone":
-    render_focus_zone(variantes, seuil_t1, seuil_t2, config, methode)
-
+    render_focus_zone(variantes, seuil_t1, seuil_t2, config, methode, dh_on)
 elif vue == "Comparaison zones":
-    render_comparaison_zones(variantes, seuil_t1, seuil_t2, config, methode)
-
+    render_comparaison_zones(variantes, seuil_t1, seuil_t2, config, methode, dh_on)
 elif vue == "Variantes":
     render_description_variantes(variantes)
+elif vue == "Réglages":
+    render_reglages()
