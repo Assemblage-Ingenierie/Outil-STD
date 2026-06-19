@@ -44,6 +44,9 @@ all_hidden   = st_hidden + plotly_hidden + [
     "PIL",
     "toml",
     "tkinter",
+    "tkinter.filedialog",
+    "tkinter.messagebox",
+    "tkinter.ttk",
 ]
 
 a = Analysis(
