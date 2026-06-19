@@ -5,9 +5,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from config.charte import (
-    ROUGE, VIOLET, GRIS, ROUGE_CLAIR, GRIS_CLAIR, BLANC, NOIR, NOIR70,
+    ROUGE, GRIS, ROUGE_CLAIR, GRIS_CLAIR, BLANC, NOIR, NOIR70,
     COULEURS_VARIANTES,
-    get_layout, grille_color, ligne_ext_color,
+    get_layout, grille_color, ligne_ext_color, violet_color,
 )
 
 
@@ -173,7 +173,7 @@ def graphique_text_vs_text_op(
         hi = max(max(all_x), max(all_y)) + 2
         fig.add_trace(go.Scatter(
             x=[lo, hi], y=[lo, hi], mode='lines',
-            line=dict(color=VIOLET, width=1.5, dash='dash'),
+            line=dict(color=violet_color(), width=1.5, dash='dash'),
             name='T_int = T_ext', hoverinfo='skip',
         ))
 

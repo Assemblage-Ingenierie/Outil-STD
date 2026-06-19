@@ -90,3 +90,8 @@ def courbe_ref_color() -> str:
 
 def ligne_ext_color() -> str:
     return LIGNE_EXT_DARK if _dark_mode else LIGNE_EXT
+
+
+def violet_color() -> str:
+    """VIOLET charte en clair, gris-bleu clair en sombre (diagonales, courbes neutres)."""
+    return "#9BAABF" if _dark_mode else VIOLET
