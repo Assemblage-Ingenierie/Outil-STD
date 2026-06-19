@@ -126,6 +126,10 @@ def render_reglages():
                          "cfg_saison_off", default=False,
                          help="Affiche les points en une couleur unique, sans séparer "
                               "saison de chauffe / refroidissement.")
+        persist_checkbox("Mode sombre (graphiques)",
+                         "cfg_dark_mode", default=False,
+                         help="Adapte les couleurs des graphiques Plotly au fond sombre. "
+                              "À activer si le thème Streamlit est en mode sombre.")
 
     # ==================================================================
     # Colonne droite : météo, ajout de variante

@@ -22,6 +22,7 @@ from views.description_variantes import render_description_variantes
 from views.reglages import render_reglages
 from core.file_picker import choisir_fichier, enregistrer_fichier
 from core import projet as projet_io
+import config.charte as charte
 
 # -- Chemins --
 BASE_DIR = Path(__file__).parent
@@ -73,6 +74,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+# -- Mode sombre : synchroniser le singleton charte au début de chaque re-run --
+charte.set_dark_mode(st.session_state.get('cfg_dark_mode', False))
 
 # -- État de session --
 if 'variantes' not in st.session_state:

@@ -70,15 +70,15 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
 
     # -- Graphiques au niveau BÂTIMENT : comparaison des variantes --
     import plotly.graph_objects as go
-    from config.charte import ROUGE, GRILLE, PLOTLY_LAYOUT
+    from config.charte import ROUGE, get_layout, grille_color
 
     BLEU = "#2196F3"
     noms_var = list(df.index)
 
     def _layout(titre, ytitre):
-        lay = dict(PLOTLY_LAYOUT)
+        lay = get_layout()
         lay.update(title=titre, xaxis=dict(title="Variante", tickangle=-15),
-                   yaxis=dict(title=ytitre, gridcolor=GRILLE),
+                   yaxis=dict(title=ytitre, gridcolor=grille_color()),
                    barmode="group", height=380)
         return lay
 

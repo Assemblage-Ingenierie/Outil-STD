@@ -6,7 +6,8 @@ from plotly.subplots import make_subplots
 
 from config.charte import (
     ROUGE, VIOLET, GRIS, ROUGE_CLAIR, GRIS_CLAIR, BLANC, NOIR, NOIR70,
-    GRILLE, LIGNE_EXT, COULEURS_VARIANTES, PLOTLY_LAYOUT
+    COULEURS_VARIANTES,
+    get_layout, grille_color, ligne_ext_color,
 )
 
 
@@ -65,7 +66,7 @@ def graphique_temp_horaire(
     multi = len(meteos_vus) > 1
     # Météo unique : gris-bleu foncé. Plusieurs météos : couleurs distinctes
     # (toujours en pointillé pour marquer « extérieur »).
-    teintes_ext = [LIGNE_EXT] if not multi else ["#455A64", "#8E24AA", "#00897B", "#6D4C41"]
+    teintes_ext = [ligne_ext_color()] if not multi else ["#455A64", "#8E24AA", "#00897B", "#6D4C41"]
     for j, (nom, var) in enumerate(meteos_vus.items()):
         t_ext = var.df_meteo['T_ext'].values
         n = min(len(t_ext), len(var.df_horaire))
@@ -90,11 +91,11 @@ def graphique_temp_horaire(
                       annotation_text=f'Seuil T2 ({seuil_t2}°C)',
                       annotation_position='bottom right')
 
-    layout = dict(PLOTLY_LAYOUT)
+    layout = get_layout()
     layout.update(
         title=titre or f'Température intérieure — {zone}',
-        xaxis=dict(title='Date', gridcolor=GRILLE),
-        yaxis=dict(title='Température (°C)', gridcolor=GRILLE),
+        xaxis=dict(title='Date', gridcolor=grille_color()),
+        yaxis=dict(title='Température (°C)', gridcolor=grille_color()),
         height=420,
     )
     fig.update_layout(**layout)
@@ -176,11 +177,11 @@ def graphique_text_vs_text_op(
             name='T_int = T_ext', hoverinfo='skip',
         ))
 
-    layout = dict(PLOTLY_LAYOUT)
+    layout = get_layout()
     layout.update(
         title=titre or f'T° opérative vs T° extérieure — {zone}',
-        xaxis=dict(title='T extérieure (°C)', gridcolor=GRILLE),
-        yaxis=dict(title='T opérative intérieure (°C)', gridcolor=GRILLE),
+        xaxis=dict(title='T extérieure (°C)', gridcolor=grille_color()),
+        yaxis=dict(title='T opérative intérieure (°C)', gridcolor=grille_color()),
         height=420,
     )
     fig.update_layout(**layout)
@@ -215,10 +216,10 @@ def graphique_meteo_comparaison(variantes) -> go.Figure:
             mode='lines+markers', name=nom, line=dict(color=color, width=2),
         ))
 
-    layout = dict(PLOTLY_LAYOUT)
+    layout = get_layout()
     layout.update(
         title="Comparaison des fichiers météo — T° extérieure moyenne mensuelle",
-        xaxis=dict(title='Mois'), yaxis=dict(title='T extérieure (°C)', gridcolor=GRILLE),
+        xaxis=dict(title='Mois'), yaxis=dict(title='T extérieure (°C)', gridcolor=grille_color()),
         height=380,
     )
     fig.update_layout(**layout)
@@ -258,7 +259,7 @@ def graphique_heures_depassement(
             h1 = [var.heures_dessus_seuil(z, seuil_t1) for z in zones]
             fig.add_trace(go.Bar(x=zones, y=h1, name=var.nom, marker_color=color))
 
-    layout = dict(PLOTLY_LAYOUT)
+    layout = get_layout()
     layout.update(
         title=f'Heures de dépassement (seuils {seuil_t1}°C / {seuil_t2}°C)',
         xaxis=dict(title='Zone', tickangle=-30),
@@ -294,11 +295,11 @@ def graphique_temp_min_moy_max(
         fig.add_trace(go.Bar(x=zones, y=t_max, name=f"T max{suffixe}",
                              marker_color=color, opacity=1.0))
 
-    layout = dict(PLOTLY_LAYOUT)
+    layout = get_layout()
     layout.update(
         title=titre or 'Températures min / moyenne / max par zone',
         xaxis=dict(title='Zone', tickangle=-30),
-        yaxis=dict(title='Température (°C)', gridcolor=GRILLE),
+        yaxis=dict(title='Température (°C)', gridcolor=grille_color()),
         barmode='group',
         height=440,
     )
@@ -329,7 +330,7 @@ def graphique_apports_solaires(
             opacity=0.85,
         ))
 
-    layout = dict(PLOTLY_LAYOUT)
+    layout = get_layout()
     layout.update(
         title=titre or f'Apports {libelle} mensuels — {zone}',
         xaxis=dict(title='Mois'),
@@ -369,7 +370,7 @@ def graphique_apports_par_zone_mensuel(
             opacity=0.9,
         ))
 
-    layout = dict(PLOTLY_LAYOUT)
+    layout = get_layout()
     layout.update(
         title=titre or f'Apports {libelle} mensuels par zone — {variante.nom}',
         xaxis=dict(title='Mois'),

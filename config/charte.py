@@ -30,6 +30,15 @@ COULEURS_VARIANTES = [
 
 FONT_FAMILY = "Open Sans, sans-serif"
 
+# Couleurs dédiées au mode sombre (graphiques Plotly)
+BG_DARK        = "#0F1117"   # fond papier (identique au fond Streamlit dark)
+PLOT_BG_DARK   = "#1A1C24"   # fond zone de tracé
+TEXTE_DARK     = "#E8ECF0"   # texte principal
+ANNOTATION_DARK = "#9AAAB8"  # annotations légères (labels iso-HR…)
+GRILLE_DARK    = "#2D3748"   # lignes de grille
+COURBE_REF_DARK = "#7A8FA0"  # courbes iso-HR
+LIGNE_EXT_DARK  = "#90CAF9"  # courbe T extérieure (bleu clair)
+
 PLOTLY_LAYOUT = dict(
     font=dict(family=FONT_FAMILY, color=NOIR),
     paper_bgcolor=BLANC,
@@ -38,3 +47,46 @@ PLOTLY_LAYOUT = dict(
     legend=dict(bgcolor=BLANC, bordercolor=GRIS, borderwidth=1),
     margin=dict(l=60, r=30, t=60, b=60),
 )
+
+PLOTLY_LAYOUT_DARK = dict(
+    font=dict(family=FONT_FAMILY, color=TEXTE_DARK),
+    paper_bgcolor=BG_DARK,
+    plot_bgcolor=PLOT_BG_DARK,
+    title_font=dict(family=FONT_FAMILY, color=TEXTE_DARK, size=14),
+    legend=dict(bgcolor=PLOT_BG_DARK, bordercolor=GRILLE_DARK, borderwidth=1,
+                font=dict(color=TEXTE_DARK)),
+    margin=dict(l=60, r=30, t=60, b=60),
+)
+
+# ---- Singleton mode sombre (initialisé à chaque re-run Streamlit) ----
+_dark_mode: bool = False
+
+
+def set_dark_mode(dark: bool) -> None:
+    global _dark_mode
+    _dark_mode = dark
+
+
+def is_dark() -> bool:
+    return _dark_mode
+
+
+def get_layout() -> dict:
+    """Retourne le dict PLOTLY_LAYOUT adapté au mode courant (clair/sombre)."""
+    return dict(PLOTLY_LAYOUT_DARK if _dark_mode else PLOTLY_LAYOUT)
+
+
+def annotation_color() -> str:
+    return ANNOTATION_DARK if _dark_mode else NOIR70
+
+
+def grille_color() -> str:
+    return GRILLE_DARK if _dark_mode else GRILLE
+
+
+def courbe_ref_color() -> str:
+    return COURBE_REF_DARK if _dark_mode else COURBE_REF
+
+
+def ligne_ext_color() -> str:
+    return LIGNE_EXT_DARK if _dark_mode else LIGNE_EXT

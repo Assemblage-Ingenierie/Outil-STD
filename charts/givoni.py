@@ -3,8 +3,9 @@ import numpy as np
 import plotly.graph_objects as go
 
 from config.charte import (
-    ROUGE, VIOLET, GRIS, GRIS_CLAIR, BLANC, NOIR, NOIR70,
-    GRILLE, COURBE_REF, COULEURS_VARIANTES, PLOTLY_LAYOUT
+    ROUGE, VIOLET, GRIS, GRIS_CLAIR, BLANC, NOIR,
+    COULEURS_VARIANTES,
+    get_layout, annotation_color, grille_color, courbe_ref_color, is_dark,
 )
 from core.try_parser import humidite_absolue
 from core import confort
@@ -71,9 +72,10 @@ def creer_givoni(
     # 1. Courbe de saturation (HR 100 %) + courbes iso-HR
     # ------------------------------------------------------------------
     T_sat, w_sat = _courbe_rh(100)
+    sat_color = VIOLET if not is_dark() else "#9C8FBF"
     fig.add_trace(go.Scatter(
         x=T_sat, y=w_sat, mode="lines",
-        line=dict(color=VIOLET, width=2),
+        line=dict(color=sat_color, width=2),
         name="Saturation (HR 100 %)",
         hovertemplate="Saturation<br>T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra></extra>",
     ))
@@ -81,14 +83,14 @@ def creer_givoni(
         T_rh, w_rh = _courbe_rh(rh)
         fig.add_trace(go.Scatter(
             x=T_rh, y=w_rh, mode="lines",
-            line=dict(color=COURBE_REF, width=1.1, dash="dot"),
+            line=dict(color=courbe_ref_color(), width=1.1, dash="dot"),
             name=f"HR {rh} %", legendgroup="iso_rh", showlegend=False,
             hovertemplate=f"HR {rh}%<br>T=%{{x:.1f}}°C<br>w=%{{y:.2f}} g/kg<extra></extra>",
         ))
         if len(T_rh):
             fig.add_annotation(
                 x=T_rh[-1], y=w_rh[-1], text=f"{rh}%", showarrow=False,
-                font=dict(size=9, color=NOIR70), xanchor="left", yanchor="bottom",
+                font=dict(size=9, color=annotation_color()), xanchor="left", yanchor="bottom",
             )
 
     # ------------------------------------------------------------------
@@ -156,11 +158,11 @@ def creer_givoni(
     # ------------------------------------------------------------------
     # 4. Mise en forme
     # ------------------------------------------------------------------
-    layout = dict(PLOTLY_LAYOUT)
+    layout = get_layout()
     layout.update(
         title=titre,
-        xaxis=dict(title="Température opérative (°C)", range=[T_MIN_PLOT, T_MAX_PLOT], gridcolor=GRILLE),
-        yaxis=dict(title="Humidité absolue (g/kg air sec)", range=[0, W_MAX_PLOT], gridcolor=GRILLE),
+        xaxis=dict(title="Température opérative (°C)", range=[T_MIN_PLOT, T_MAX_PLOT], gridcolor=grille_color()),
+        yaxis=dict(title="Humidité absolue (g/kg air sec)", range=[0, W_MAX_PLOT], gridcolor=grille_color()),
         legend=dict(itemsizing="constant"),
         height=600,
     )

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-from config.charte import COULEURS_VARIANTES, GRIS, ROUGE, PLOTLY_LAYOUT
+from config.charte import COULEURS_VARIANTES, GRIS, ROUGE, get_layout
 from views.widgets import persist_multiselect, persist_selectbox
 
 
@@ -110,7 +110,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
         besoins_fr = [var.synthese_zone(z)['besoins_froid_kwh_m2'] for z in zones_sel]
         fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_ch, name='Chauffage', marker_color=ROUGE))
         fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_fr, name='Climatisation', marker_color='#2196F3'))
-        layout = dict(PLOTLY_LAYOUT)
+        layout = get_layout()
         layout.update(title='Besoins annuels par zone (kWh/m²)', xaxis=dict(tickangle=-30),
                       yaxis=dict(title='kWh/m²'), barmode='group', height=400)
         fig_bes.update_layout(**layout)
