@@ -14,6 +14,16 @@ else:
 
 app_file = str(base / "app.py")
 
+import threading
+import webbrowser
+import time
+
+def _ouvrir_navigateur():
+    time.sleep(3)
+    webbrowser.open("http://localhost:8501")
+
+threading.Thread(target=_ouvrir_navigateur, daemon=True).start()
+
 from streamlit.web import cli as stcli
 
 sys.argv = [
