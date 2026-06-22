@@ -95,3 +95,30 @@ def ligne_ext_color() -> str:
 def violet_color() -> str:
     """VIOLET charte en clair, gris-bleu clair en sombre (diagonales, courbes neutres)."""
     return "#9BAABF" if _dark_mode else VIOLET
+
+
+def title_color() -> str:
+    return TEXTE_DARK if _dark_mode else VIOLET
+
+
+def finalize_fig(fig):
+    """
+    Applique le thème courant au titre et à la légende d'une figure Plotly.
+    À appeler juste avant de retourner la figure depuis une fonction de graphe.
+
+    Utilise fig.update_layout() (magic-underscore garanti) pour forcer les
+    couleurs de titre et de légende, indépendamment de la façon dont les
+    fonctions de graphe ont construit leur layout dict.
+    """
+    if _dark_mode:
+        fig.update_layout(
+            title_font_color=TEXTE_DARK,
+            legend_font_color=TEXTE_DARK,
+            legend_bgcolor=PLOT_BG_DARK,
+            legend_bordercolor=GRILLE_DARK,
+        )
+    else:
+        fig.update_layout(
+            title_font_color=VIOLET,
+        )
+    return fig

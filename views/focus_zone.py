@@ -5,7 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from views.widgets import persist_multiselect, persist_selectbox
-from config.charte import COULEURS_VARIANTES, get_layout, grille_color
+from config.charte import COULEURS_VARIANTES, get_layout, grille_color, finalize_fig
 
 
 def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
@@ -178,4 +178,4 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
         height=380,
     )
     fig_hr.update_layout(**layout)
-    st.plotly_chart(fig_hr, use_container_width=True)
+    st.plotly_chart(finalize_fig(fig_hr), use_container_width=True)

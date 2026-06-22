@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 from config.charte import (
     ROUGE, GRIS, ROUGE_CLAIR, GRIS_CLAIR, BLANC, NOIR, NOIR70,
     COULEURS_VARIANTES,
-    get_layout, grille_color, ligne_ext_color, violet_color,
+    get_layout, grille_color, ligne_ext_color, violet_color, finalize_fig,
 )
 
 
@@ -99,7 +99,7 @@ def graphique_temp_horaire(
         height=420,
     )
     fig.update_layout(**layout)
-    return fig
+    return finalize_fig(fig)
 
 
 def graphique_text_vs_text_op(
@@ -185,7 +185,7 @@ def graphique_text_vs_text_op(
         height=420,
     )
     fig.update_layout(**layout)
-    return fig
+    return finalize_fig(fig)
 
 
 def graphique_meteo_comparaison(variantes) -> go.Figure:
@@ -223,7 +223,7 @@ def graphique_meteo_comparaison(variantes) -> go.Figure:
         height=380,
     )
     fig.update_layout(**layout)
-    return fig
+    return finalize_fig(fig)
 
 
 def graphique_heures_depassement(
@@ -268,7 +268,7 @@ def graphique_heures_depassement(
         height=420,
     )
     fig.update_layout(**layout)
-    return fig
+    return finalize_fig(fig)
 
 
 def graphique_temp_min_moy_max(
@@ -304,7 +304,7 @@ def graphique_temp_min_moy_max(
         height=440,
     )
     fig.update_layout(**layout)
-    return fig
+    return finalize_fig(fig)
 
 
 def graphique_apports_solaires(
@@ -339,7 +339,7 @@ def graphique_apports_solaires(
         height=380,
     )
     fig.update_layout(**layout)
-    return fig
+    return finalize_fig(fig)
 
 
 def graphique_apports_par_zone_mensuel(
@@ -379,4 +379,4 @@ def graphique_apports_par_zone_mensuel(
         height=440,
     )
     fig.update_layout(**layout)
-    return fig
+    return finalize_fig(fig)

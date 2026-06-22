@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from config.charte import (
     ROUGE, VIOLET, GRIS, GRIS_CLAIR, BLANC, NOIR,
     COULEURS_VARIANTES,
-    get_layout, annotation_color, grille_color, courbe_ref_color, is_dark,
+    get_layout, annotation_color, grille_color, courbe_ref_color, is_dark, finalize_fig,
 )
 from core.try_parser import humidite_absolue
 from core import confort
@@ -167,4 +167,4 @@ def creer_givoni(
         height=600,
     )
     fig.update_layout(**layout)
-    return fig
+    return finalize_fig(fig)

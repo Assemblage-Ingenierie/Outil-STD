@@ -70,7 +70,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
 
     # -- Graphiques au niveau BÂTIMENT : comparaison des variantes --
     import plotly.graph_objects as go
-    from config.charte import ROUGE, get_layout, grille_color
+    from config.charte import ROUGE, get_layout, grille_color, finalize_fig
 
     BLEU = "#2196F3"
     noms_var = list(df.index)
@@ -90,7 +90,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins froid (kWh/m²)"],
                            name="Climatisation", marker_color=BLEU))
     fig_b.update_layout(**_layout("Besoins par variante (kWh/m²)", "kWh/m²"))
-    st.plotly_chart(fig_b, use_container_width=True)
+    st.plotly_chart(finalize_fig(fig_b), use_container_width=True)
 
     # Températures min / moy / max
     st.subheader("Températures du bâtiment")
@@ -102,7 +102,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     fig_t.add_trace(go.Bar(x=noms_var, y=df["T max (°C)"], name="T max",
                            marker_color=ROUGE, opacity=0.85))
     fig_t.update_layout(**_layout("Températures par variante (°C)", "°C"))
-    st.plotly_chart(fig_t, use_container_width=True)
+    st.plotly_chart(finalize_fig(fig_t), use_container_width=True)
 
     # % hors confort 0 / 1 m/s
     st.subheader("Part d'inconfort (heures d'occupation)")
@@ -110,4 +110,4 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     for col, op in [(cols_pct[0], 0.6), (cols_pct[1] if len(cols_pct) > 1 else cols_pct[0], 1.0)]:
         fig_c.add_trace(go.Bar(x=noms_var, y=df[col], name=col, marker_color=ROUGE, opacity=op))
     fig_c.update_layout(**_layout("Part d'inconfort par variante (%)", "% des heures d'occupation"))
-    st.plotly_chart(fig_c, use_container_width=True)
+    st.plotly_chart(finalize_fig(fig_c), use_container_width=True)

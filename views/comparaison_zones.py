@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-from config.charte import COULEURS_VARIANTES, GRIS, ROUGE, get_layout
+from config.charte import COULEURS_VARIANTES, GRIS, ROUGE, get_layout, finalize_fig
 from views.widgets import persist_multiselect, persist_selectbox
 
 
@@ -114,7 +114,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
         layout.update(title='Besoins annuels par zone (kWh/m²)', xaxis=dict(tickangle=-30),
                       yaxis=dict(title='kWh/m²'), barmode='group', height=400)
         fig_bes.update_layout(**layout)
-        st.plotly_chart(fig_bes, use_container_width=True)
+        st.plotly_chart(finalize_fig(fig_bes), use_container_width=True)
 
     # -- Apports solaires mensuels : une barre par mois par zone --
     st.subheader("Apports solaires mensuels par zone")
