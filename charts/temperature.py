@@ -246,13 +246,13 @@ def graphique_heures_depassement(
             fig.add_trace(go.Bar(
                 x=x_labels, y=h1,
                 name=f'{var.nom} > {seuil_t1}°C',
-                marker_color=color, opacity=0.85,
+                marker=dict(color=color, opacity=0.85),
                 **bar_labels(".0f"),
             ))
             fig.add_trace(go.Bar(
                 x=x_labels, y=h2,
                 name=f'{var.nom} > {seuil_t2}°C',
-                marker_color=color, opacity=0.5,
+                marker=dict(color=color, opacity=0.5),
                 **bar_labels(".0f"),
             ))
     else:
@@ -293,11 +293,11 @@ def graphique_temp_min_moy_max(
             t_max.append(round(st['t_max'], 1))
         suffixe = f" — {var.nom}" if len(variantes) > 1 else ""
         fig.add_trace(go.Bar(x=zones, y=t_min, name=f"T min{suffixe}",
-                             marker_color=color, opacity=0.45, **bar_labels()))
+                             marker=dict(color=color, opacity=0.45), **bar_labels()))
         fig.add_trace(go.Bar(x=zones, y=t_moy, name=f"T moy{suffixe}",
-                             marker_color=color, opacity=0.7, **bar_labels()))
+                             marker=dict(color=color, opacity=0.7), **bar_labels()))
         fig.add_trace(go.Bar(x=zones, y=t_max, name=f"T max{suffixe}",
-                             marker_color=color, opacity=1.0, **bar_labels()))
+                             marker=dict(color=color, opacity=1.0), **bar_labels()))
 
     layout = get_layout()
     layout.update(
@@ -331,8 +331,7 @@ def graphique_apports_solaires(
             x=[NOMS_MOIS[int(m)-1] for m in monthly.index],
             y=monthly.values,
             name=var.nom,
-            marker_color=color,
-            opacity=0.85,
+            marker=dict(color=color, opacity=0.85),
             **bar_labels(".0f"),
         ))
 
@@ -373,8 +372,7 @@ def graphique_apports_par_zone_mensuel(
             x=NOMS_MOIS,
             y=monthly.values,
             name=zone,
-            marker_color=color,
-            opacity=0.9,
+            marker=dict(color=color, opacity=0.9),
             **bar_labels(".0f"),
         ))
 

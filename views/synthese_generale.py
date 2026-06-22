@@ -97,11 +97,11 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     st.subheader("Températures du bâtiment")
     fig_t = go.Figure()
     fig_t.add_trace(go.Bar(x=noms_var, y=df["T min (°C)"], name="T min",
-                           marker_color=BLEU, opacity=0.6, **bar_labels()))
+                           marker=dict(color=BLEU, opacity=0.6), **bar_labels()))
     fig_t.add_trace(go.Bar(x=noms_var, y=df["T moy (°C)"], name="T moy",
                            marker_color="#9E9E9E", **bar_labels()))
     fig_t.add_trace(go.Bar(x=noms_var, y=df["T max (°C)"], name="T max",
-                           marker_color=ROUGE, opacity=0.85, **bar_labels()))
+                           marker=dict(color=ROUGE, opacity=0.85), **bar_labels()))
     fig_t.update_layout(**_layout("Températures par variante (°C)", "°C"))
     st.plotly_chart(finalize_fig(fig_t), use_container_width=True)
 
