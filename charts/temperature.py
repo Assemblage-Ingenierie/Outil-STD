@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 from config.charte import (
     ROUGE, GRIS, ROUGE_CLAIR, GRIS_CLAIR, BLANC, NOIR, NOIR70,
     COULEURS_VARIANTES,
-    get_layout, grille_color, ligne_ext_color, violet_color, finalize_fig,
+    get_layout, grille_color, ligne_ext_color, violet_color, finalize_fig, bar_labels,
 )
 
 
@@ -247,17 +247,20 @@ def graphique_heures_depassement(
                 x=x_labels, y=h1,
                 name=f'{var.nom} > {seuil_t1}°C',
                 marker_color=color, opacity=0.85,
+                **bar_labels(".0f"),
             ))
             fig.add_trace(go.Bar(
                 x=x_labels, y=h2,
                 name=f'{var.nom} > {seuil_t2}°C',
                 marker_color=color, opacity=0.5,
+                **bar_labels(".0f"),
             ))
     else:
         for i, var in enumerate(variantes):
             color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
             h1 = [var.heures_dessus_seuil(z, seuil_t1) for z in zones]
-            fig.add_trace(go.Bar(x=zones, y=h1, name=var.nom, marker_color=color))
+            fig.add_trace(go.Bar(x=zones, y=h1, name=var.nom, marker_color=color,
+                                 **bar_labels(".0f")))
 
     layout = get_layout()
     layout.update(
@@ -266,6 +269,7 @@ def graphique_heures_depassement(
         yaxis=dict(title='Heures / an'),
         barmode='group',
         height=420,
+        uniformtext=dict(minsize=8, mode='hide'),
     )
     fig.update_layout(**layout)
     return finalize_fig(fig)
@@ -289,11 +293,11 @@ def graphique_temp_min_moy_max(
             t_max.append(round(st['t_max'], 1))
         suffixe = f" — {var.nom}" if len(variantes) > 1 else ""
         fig.add_trace(go.Bar(x=zones, y=t_min, name=f"T min{suffixe}",
-                             marker_color=color, opacity=0.45))
+                             marker_color=color, opacity=0.45, **bar_labels()))
         fig.add_trace(go.Bar(x=zones, y=t_moy, name=f"T moy{suffixe}",
-                             marker_color=color, opacity=0.7))
+                             marker_color=color, opacity=0.7, **bar_labels()))
         fig.add_trace(go.Bar(x=zones, y=t_max, name=f"T max{suffixe}",
-                             marker_color=color, opacity=1.0))
+                             marker_color=color, opacity=1.0, **bar_labels()))
 
     layout = get_layout()
     layout.update(
@@ -302,6 +306,7 @@ def graphique_temp_min_moy_max(
         yaxis=dict(title='Température (°C)', gridcolor=grille_color()),
         barmode='group',
         height=440,
+        uniformtext=dict(minsize=8, mode='hide'),
     )
     fig.update_layout(**layout)
     return finalize_fig(fig)
@@ -328,6 +333,7 @@ def graphique_apports_solaires(
             name=var.nom,
             marker_color=color,
             opacity=0.85,
+            **bar_labels(".0f"),
         ))
 
     layout = get_layout()
@@ -337,6 +343,7 @@ def graphique_apports_solaires(
         yaxis=dict(title=f'Apports {libelle} (kWh)'),
         barmode='group',
         height=380,
+        uniformtext=dict(minsize=7, mode='hide'),
     )
     fig.update_layout(**layout)
     return finalize_fig(fig)
@@ -368,6 +375,7 @@ def graphique_apports_par_zone_mensuel(
             name=zone,
             marker_color=color,
             opacity=0.9,
+            **bar_labels(".0f"),
         ))
 
     layout = get_layout()
@@ -377,6 +385,7 @@ def graphique_apports_par_zone_mensuel(
         yaxis=dict(title=f'Apports {libelle} (kWh)'),
         barmode='group',
         height=440,
+        uniformtext=dict(minsize=7, mode='hide'),
     )
     fig.update_layout(**layout)
     return finalize_fig(fig)

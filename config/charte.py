@@ -101,6 +101,18 @@ def title_color() -> str:
     return TEXTE_DARK if _dark_mode else VIOLET
 
 
+def bar_labels(fmt: str = ".1f") -> dict:
+    """
+    Paramètres à passer à go.Bar() pour afficher les étiquettes de valeurs.
+    fmt : format Python sans les accolades, ex. '.1f', '.0f', '.1%'
+    Les valeurs nulles (0) n'affichent pas d'étiquette (évite le bruit).
+    """
+    return dict(
+        texttemplate=f"%{{y:{fmt}}}",
+        textposition="outside",
+    )
+
+
 def finalize_fig(fig):
     """
     Applique le thème courant au titre et à la légende d'une figure Plotly.

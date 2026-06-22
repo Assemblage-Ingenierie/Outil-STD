@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-from config.charte import COULEURS_VARIANTES, GRIS, ROUGE, get_layout, finalize_fig
+from config.charte import COULEURS_VARIANTES, GRIS, ROUGE, get_layout, finalize_fig, bar_labels
 from views.widgets import persist_multiselect, persist_selectbox
 
 
@@ -108,11 +108,14 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
         fig_bes = go.Figure()
         besoins_ch = [var.synthese_zone(z)['besoins_chaud_kwh_m2'] for z in zones_sel]
         besoins_fr = [var.synthese_zone(z)['besoins_froid_kwh_m2'] for z in zones_sel]
-        fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_ch, name='Chauffage', marker_color=ROUGE))
-        fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_fr, name='Climatisation', marker_color='#2196F3'))
+        fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_ch, name='Chauffage',
+                                 marker_color=ROUGE, **bar_labels()))
+        fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_fr, name='Climatisation',
+                                 marker_color='#2196F3', **bar_labels()))
         layout = get_layout()
         layout.update(title='Besoins annuels par zone (kWh/m²)', xaxis=dict(tickangle=-30),
-                      yaxis=dict(title='kWh/m²'), barmode='group', height=400)
+                      yaxis=dict(title='kWh/m²'), barmode='group', height=400,
+                      uniformtext=dict(minsize=8, mode='hide'))
         fig_bes.update_layout(**layout)
         st.plotly_chart(finalize_fig(fig_bes), use_container_width=True)
 
