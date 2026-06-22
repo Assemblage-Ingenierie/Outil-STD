@@ -64,6 +64,9 @@ st.markdown("""
     h1 { color: #E30513; }
     h2 { color: #30323E; }
 
+    /* Masquer les ancres de lien automatiques des titres Streamlit */
+    h1 a, h2 a, h3 a, h4 a { display: none !important; }
+
     .stButton>button {
         background-color: #E30513;
         color: white;
