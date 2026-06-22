@@ -109,7 +109,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     st.subheader("Part d'inconfort (heures d'occupation)")
     fig_c = go.Figure()
     for col, op in [(cols_pct[0], 0.6), (cols_pct[1] if len(cols_pct) > 1 else cols_pct[0], 1.0)]:
-        fig_c.add_trace(go.Bar(x=noms_var, y=df[col], name=col, marker_color=ROUGE,
-                               opacity=op, **bar_labels(".1f")))
+        fig_c.add_trace(go.Bar(x=noms_var, y=df[col], name=col,
+                               marker=dict(color=ROUGE, opacity=op), **bar_labels(".1f")))
     fig_c.update_layout(**_layout("Part d'inconfort par variante (%)", "% des heures d'occupation"))
     st.plotly_chart(finalize_fig(fig_c), use_container_width=True)
