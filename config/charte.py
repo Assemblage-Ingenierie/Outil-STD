@@ -105,11 +105,13 @@ def bar_labels(fmt: str = ".1f") -> dict:
     """
     Paramètres à passer à go.Bar() pour afficher les étiquettes de valeurs.
     fmt : format Python sans les accolades, ex. '.1f', '.0f', '.1%'
-    Les valeurs nulles (0) n'affichent pas d'étiquette (évite le bruit).
+    Couleur uniforme adaptée au mode clair/sombre, police en gras.
     """
+    color = TEXTE_DARK if _dark_mode else NOIR
     return dict(
-        texttemplate=f"%{{y:{fmt}}}",
+        texttemplate=f"<b>%{{y:{fmt}}}</b>",
         textposition="outside",
+        textfont=dict(color=color, family=FONT_FAMILY, size=11),
     )
 
 
