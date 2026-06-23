@@ -72,7 +72,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="OuiSTD",
+    name="Outil STD",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -82,7 +82,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon='assets/sigle_Ai.ico',
 )
 
 coll = COLLECT(
@@ -93,5 +93,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="OuiSTD",
+    name="Outil STD",
 )

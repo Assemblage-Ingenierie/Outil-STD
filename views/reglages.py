@@ -142,6 +142,21 @@ def render_reglages():
     _section_export()
     st.divider()
     _section_nouveau_projet()
+    st.divider()
+    _section_maintenance()
+
+
+# ----------------------------------------------------------------------
+def _section_maintenance():
+    with st.expander("🛠️ Maintenance"):
+        st.caption("Le chargement des variantes est mis en cache sur le disque "
+                   "(rechargement quasi instantané). Videz le cache si un fichier "
+                   ".slk a été modifié sans changer sa date, ou en cas de doute.")
+        if st.button("Vider le cache de chargement", key="btn_vider_cache"):
+            from core import cache_disque
+            n = cache_disque.vider()
+            st.cache_data.clear()   # vide aussi le cache RAM (L1)
+            st.success(f"Cache vidé ({n} fichier(s) supprimé(s)).")
 
 
 # ----------------------------------------------------------------------

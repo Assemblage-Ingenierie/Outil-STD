@@ -22,6 +22,13 @@ class Variante:
     meteo_nom: str = ""          # nom du fichier météo (identifiant)
     meteo_label: str = ""        # libellé convivial (ex. "Climat actuel", "RCP 8.5")
     periode: tuple | None = None  # (mois_debut, mois_fin) ; None = année entière
+    # Cache interne des indicateurs bâtiment (clé = (methode, config_hash))
+    _cache_ind: dict = field(default_factory=dict, repr=False, compare=False)
+    # Index zone (strippée) -> ligne de synthèse, construit une fois à l'init
+    _syn_par_zone: dict = field(default_factory=dict, repr=False, compare=False)
+    # Cache du masque de période (clé = (periode, n)) ; periode peut être mutée
+    # en place entre re-runs (app.py) → la clé l'absorbe.
+    _mask_cache: dict = field(default_factory=dict, repr=False, compare=False)
 
     def a_meteo(self) -> bool:
         return self.df_meteo is not None and not self.df_meteo.empty
@@ -32,15 +39,24 @@ class Variante:
         (self.periode). None = année entière. Gère les périodes à cheval sur
         l'année (ex. (11, 4) = novembre→avril).
         """
+        key = (self.periode, n)
+        cached = self._mask_cache.get(key)
+        if cached is not None:
+            return cached
         mois = self.df_horaire['mois'].values
         if n is not None:
             mois = mois[:n]
         if not self.periode:
-            return np.ones(len(mois), dtype=bool)
-        m1, m2 = self.periode
-        if m1 <= m2:
-            return (mois >= m1) & (mois <= m2)
-        return (mois >= m1) | (mois <= m2)   # période à cheval sur l'année
+            mask = np.ones(len(mois), dtype=bool)
+        else:
+            m1, m2 = self.periode
+            if m1 <= m2:
+                mask = (mois >= m1) & (mois <= m2)
+            else:
+                mask = (mois >= m1) | (mois <= m2)   # période à cheval sur l'année
+        mask.flags.writeable = False   # masque partagé en lecture seule
+        self._mask_cache[key] = mask
+        return mask
 
     def meteo_affiche(self) -> str:
         """Libellé météo à afficher : le label convivial sinon le nom de fichier."""
@@ -49,6 +65,38 @@ class Variante:
     def __post_init__(self):
         if not self.zones and 'zones' in self.df_horaire.attrs:
             self.zones = self.df_horaire.attrs['zones']
+        # Index zone -> ligne de synthèse (lookup O(1) au lieu d'un scan str.strip
+        # par appel). setdefault → conserve la 1re occurrence (≡ iloc[0] d'avant).
+        self._syn_par_zone = {}
+        df_s = self.df_synthese
+        if df_s is not None and not df_s.empty and 'zone' in df_s.columns:
+            for _, row in df_s.iterrows():
+                self._syn_par_zone.setdefault(str(row['zone']).strip(), row.to_dict())
+        # Pré-calcule l'humidité absolue intérieure pour toutes les zones une
+        # seule fois (économise le calcul psychrométrique répété dans chaque vue).
+        self._precalculer_w_interieur()
+
+    # ------------------------------------------------------------------
+    # Pré-calcul humidité absolue intérieure
+    # ------------------------------------------------------------------
+
+    def _precalculer_w_interieur(self):
+        """Calcule w_intérieur (g/kg) pour toutes les zones et le stocke dans
+        df_horaire sous la clé ``w_interieur|<zone>``. Appelé une seule fois
+        à la création de la Variante."""
+        cols = self.df_horaire.columns
+        for zone in self.zones:
+            w_key = f"w_interieur|{zone}"
+            if w_key in cols:
+                continue   # déjà calculé (ex. variante reconstruite depuis un cache)
+            t_key = f"Température (°C)|{zone}"
+            hr_key = f"Humidité relative (%)|{zone}"
+            if t_key not in cols or hr_key not in cols:
+                continue
+            t_vals = self.df_horaire[t_key].values
+            hr_vals = self.df_horaire[hr_key].values
+            w = humidite_absolue(t_vals, hr_vals)
+            self.df_horaire[w_key] = w
 
     # ------------------------------------------------------------------
     # Accesseurs colonnes horaires
@@ -103,13 +151,9 @@ class Variante:
         return self.df_horaire.get(key, pd.Series(dtype=float))
 
     def col_w_interieur(self, zone: str) -> pd.Series:
-        """Humidité absolue intérieure (g/kg) calculée depuis T et HR de la zone."""
-        t = self.col_temp(zone)
-        hr = self.col_hr(zone)
-        if t.empty or hr.empty:
-            return pd.Series(dtype=float)
-        w = humidite_absolue(t.values, hr.values)
-        return pd.Series(w, index=t.index)
+        """Humidité absolue intérieure (g/kg) — pré-calculée à l'init."""
+        key = f"w_interieur|{zone}"
+        return self.df_horaire.get(key, pd.Series(dtype=float))
 
     def apports_mensuels(self, zone: str, type_apport: str = "solaires") -> pd.Series:
         """
@@ -283,12 +327,8 @@ class Variante:
         return {'T': T[garde], 'w': W[garde], 'saison': np.asarray(saison)[garde]}
 
     def synthese_zone(self, zone: str) -> dict | None:
-        """Retourne la ligne de synthèse annuelle pour une zone."""
-        df = self.df_synthese
-        mask = df['zone'].str.strip() == zone.strip()
-        if not mask.any():
-            return None
-        return df[mask].iloc[0].to_dict()
+        """Retourne la ligne de synthèse annuelle pour une zone (lookup O(1))."""
+        return self._syn_par_zone.get(str(zone).strip())
 
     # ------------------------------------------------------------------
     # Tableau de synthèse bâtiment
@@ -334,16 +374,32 @@ class Variante:
           - Besoins chaud / froid : totaux (kWh) et ratios (kWh/m²)
           - T min (mini global), T moy (moyenne pondérée surface), T max (maxi global)
           - % hors confort 0 / 1 m/s : pondéré par heures d'occupation
+        Résultat mis en cache par (methode, config_hash, zones) — recalculé
+        seulement si la configuration change.
         """
         config = config or {}
         zones = zones if zones is not None else self.zones
         libelle = "COCO" if methode == "coco" else "Givoni"
+
+        # --- cache (C) ---------------------------------------------------
+        try:
+            config_key = hash(repr(sorted(config.items())))
+        except Exception:
+            config_key = id(config)
+        cache_key = (methode, config_key, tuple(zones), self.periode)
+        if cache_key in self._cache_ind:
+            return self._cache_ind[cache_key]
+        # -----------------------------------------------------------------
 
         surf_tot = 0.0
         bch_tot = bfr_tot = 0.0
         t_mins, t_maxs = [], []
         somme_tmoy_surf = 0.0
         somme_surf_pour_tmoy = 0.0
+        # Confort : accumulateurs pour les deux vitesses en une seule passe (B)
+        tot_hors_0 = tot_occ_0 = 0
+        tot_hors_1 = tot_occ_1 = 0
+
         for zone in zones:
             syn = self.synthese_zone(zone)
             stats = self.stats_temp(zone)
@@ -359,6 +415,11 @@ class Variante:
             if stats['t_moy'] == stats['t_moy'] and surf == surf and surf > 0:
                 somme_tmoy_surf += stats['t_moy'] * surf
                 somme_surf_pour_tmoy += surf
+            # Confort 0 m/s et 1 m/s dans la même itération zone (B)
+            h0, o0 = self._compte_hors_occupe(zone, config, 0.0, methode)
+            tot_hors_0 += h0; tot_occ_0 += o0
+            h1, o1 = self._compte_hors_occupe(zone, config, 1.0, methode)
+            tot_hors_1 += h1; tot_occ_1 += o1
 
         # T moyenne pondérée surface ; repli moyenne simple si pas de surfaces
         if somme_surf_pour_tmoy > 0:
@@ -368,15 +429,7 @@ class Variante:
             moys = [m for m in moys if m == m]
             t_moy = float(np.mean(moys)) if moys else np.nan
 
-        def _pct_bat(vitesse):
-            tot_hors = tot_occ = 0
-            for zone in zones:
-                h, o = self._compte_hors_occupe(zone, config, vitesse, methode)
-                tot_hors += h
-                tot_occ += o
-            return (100.0 * tot_hors / tot_occ) if tot_occ > 0 else np.nan
-
-        return {
+        result = {
             'Surface totale (m²)': round(surf_tot, 1) if surf_tot else np.nan,
             'Besoins chaud (kWh)': round(bch_tot, 0),
             'Besoins chaud (kWh/m²)': round(bch_tot / surf_tot, 1) if surf_tot else np.nan,
@@ -385,9 +438,11 @@ class Variante:
             'T min (°C)': round(min(t_mins), 1) if t_mins else np.nan,
             'T moy (°C)': round(t_moy, 1) if t_moy == t_moy else np.nan,
             'T max (°C)': round(max(t_maxs), 1) if t_maxs else np.nan,
-            f'% hors {libelle} 0 m/s': _pct_bat(0.0),
-            f'% hors {libelle} 1 m/s': _pct_bat(1.0),
+            f'% hors {libelle} 0 m/s': (100.0 * tot_hors_0 / tot_occ_0) if tot_occ_0 > 0 else np.nan,
+            f'% hors {libelle} 1 m/s': (100.0 * tot_hors_1 / tot_occ_1) if tot_occ_1 > 0 else np.nan,
         }
+        self._cache_ind[cache_key] = result
+        return result
 
 
 def charger_variante(
@@ -396,7 +451,34 @@ def charger_variante(
     fichier_synthese: str,
     fichier_meteo: str,
 ) -> Variante:
-    """Charge et assemble une variante depuis ses fichiers (météo optionnelle)."""
+    """
+    Charge et assemble une variante depuis ses fichiers (météo optionnelle).
+
+    Cache disque L2 (core/cache_disque) devant le parsing : un fichier déjà parsé
+    est rechargé depuis un binaire local au lieu d'être re-parsé (gain majeur entre
+    sessions). Best-effort : toute erreur de cache retombe sur un parsing normal.
+    """
+    from core import cache_disque
+
+    bundle = cache_disque.charger(fichier_resultats, fichier_synthese, fichier_meteo)
+    if bundle is not None:
+        df_h = bundle['df_horaire']
+        df_s = bundle['df_synthese']
+        df_m = bundle['df_meteo']
+        zones = bundle.get('zones', [])
+        meteo_nom = bundle.get('meteo_nom', "")
+        # Restaurer les attrs (pickle les préserve en principe, mais on les
+        # ré-affecte explicitement pour ne dépendre d'aucune version pandas).
+        try:
+            df_h.attrs['zones'] = zones
+            if bundle.get('groupes') is not None:
+                df_h.attrs['groupes'] = bundle['groupes']
+        except Exception:
+            pass
+        return Variante(nom=nom, df_horaire=df_h, df_synthese=df_s, df_meteo=df_m,
+                        zones=zones, meteo_nom=meteo_nom)
+
+    # --- cache miss : parsing complet ---
     df_h = parse_resultats(fichier_resultats)
     df_s = parse_synthese(fichier_synthese)
     meteo_nom = ""
@@ -406,5 +488,7 @@ def charger_variante(
     else:
         df_m = pd.DataFrame(columns=['T_ext', 'HR_ext', 'DNI', 'DHI', 'w_ext'])
     zones = df_h.attrs.get('zones', [])
+    cache_disque.ecrire(fichier_resultats, fichier_synthese, fichier_meteo,
+                        df_h, df_s, df_m, zones, df_h.attrs.get('groupes'), meteo_nom)
     return Variante(nom=nom, df_horaire=df_h, df_synthese=df_s, df_meteo=df_m,
                     zones=zones, meteo_nom=meteo_nom)

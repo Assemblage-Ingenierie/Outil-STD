@@ -48,13 +48,17 @@ def _parse_value(raw: str):
 
 
 def _lire_cellules(filepath: Path, lignes_cibles: set | None = None,
-                   cols_cibles: set | None = None) -> dict:
+                   cols_cibles: set | None = None,
+                   row_max: int | None = None) -> dict:
     """
     Lit le fichier SLK et retourne un dict {(row, col): valeur}.
     - lignes_cibles : ne charge que ces numéros de ligne Y.
     - cols_cibles   : ne charge que ces numéros de colonne X. Permet de NE PAS
       matérialiser les ~1500 colonnes inutiles (consommations) des gros fichiers
       résultats → chargement beaucoup plus rapide et moins gourmand en RAM.
+    - row_max       : arrêt anticipé dès qu'une cellule de ligne > row_max est vue
+      (le SLK est émis par Y croissant). Sert à lire les en-têtes (rows 1-2) sans
+      scanner tout le fichier.
     """
     cellules = {}
     pattern = re.compile(r'C;Y(\d+);X(\d+);K([^;\n]+)')
@@ -67,6 +71,8 @@ def _lire_cellules(filepath: Path, lignes_cibles: set | None = None,
             if not m:
                 continue
             row, col = int(m.group(1)), int(m.group(2))
+            if row_max is not None and row > row_max:
+                break
             if lignes_cibles is not None and row not in lignes_cibles:
                 continue
             if cols_cibles is not None and col not in cols_cibles:
@@ -74,6 +80,45 @@ def _lire_cellules(filepath: Path, lignes_cibles: set | None = None,
             cellules[(row, col)] = _parse_value(m.group(3))
 
     return cellules
+
+
+def _lire_colonnes(filepath: Path, cols_cibles: set, row_min: int = 3) -> tuple[dict, int]:
+    """
+    Lit le fichier SLK en UN passage et range les valeurs PAR COLONNE.
+    Retourne ({col: {row: valeur}}, max_row) pour les colonnes de `cols_cibles`
+    et les lignes >= row_min.
+
+    Remplace, pour le fichier résultats, le dict global à clés-tuples
+    {(row, col): valeur} (~18 M entrées pour 164 zones) suivi d'une reconstruction
+    O(lignes × colonnes). Même regex et même `_parse_value` que `_lire_cellules`
+    → sémantique de parsing identique. Les cellules manquantes restent simplement
+    absentes du dict de leur colonne (→ valeur par défaut au remplissage, comme
+    l'ancien `.get((row, col), défaut)`).
+    """
+    pattern = re.compile(r'C;Y(\d+);X(\d+);K([^;\n]+)')
+    match = pattern.match          # ancré : les lignes cellule commencent par 'C;Y'
+    col_data: dict[int, dict[int, object]] = {c: {} for c in cols_cibles}
+    max_row = 0
+
+    with open(filepath, 'r', encoding='latin-1', errors='replace') as f:
+        for line in f:
+            m = match(line)
+            if m is None:
+                continue
+            # Tester la colonne AVANT de convertir la ligne : la moitié des
+            # cellules (colonnes consommations ignorées) sort ici sans int(row).
+            col = int(m.group(2))
+            d = col_data.get(col)
+            if d is None:
+                continue
+            row = int(m.group(1))
+            if row < row_min:
+                continue
+            d[row] = _parse_value(m.group(3))
+            if row > max_row:
+                max_row = row
+
+    return col_data, max_row
 
 
 def _detecter_type(filepath: Path) -> str:
@@ -100,8 +145,10 @@ def parse_resultats(filepath: str | Path) -> pd.DataFrame:
     """
     filepath = Path(filepath)
 
-    # 1. Lire les en-têtes (Y1 et Y2)
-    headers = _lire_cellules(filepath, lignes_cibles={1, 2})
+    # 1. Lire les en-têtes (Y1 et Y2) — lecture bornée : on s'arrête dès la 1re
+    #    ligne de données (les en-têtes précèdent toujours les données, le SLK étant
+    #    émis par Y croissant) au lieu de scanner tout le fichier inutilement.
+    headers = _lire_cellules(filepath, lignes_cibles={1, 2}, row_max=2)
 
     # Séparer types (Y1) et noms de zones (Y2)
     types_col = {col: val for (row, col), val in headers.items() if row == 1}
@@ -156,26 +203,38 @@ def parse_resultats(filepath: str | Path) -> pd.DataFrame:
             cols_a_charger.update(c for c, _ in items)
 
     # 5. Lire UNIQUEMENT les colonnes utiles (globales + grandeurs exploitées),
-    #    pour ne pas charger en mémoire les ~1500 colonnes de consommations.
+    #    rangées PAR COLONNE en un seul passage — évite le dict global à clés-tuples
+    #    (~18 M entrées pour 164 zones) et la reconstruction O(lignes × colonnes).
     print(f"  Lecture de {filepath.name}...")
-    toutes_cellules = _lire_cellules(filepath, cols_cibles=cols_a_charger)
+    col_data, max_row = _lire_colonnes(filepath, cols_a_charger, row_min=3)
 
-    # 6. Déterminer le nombre de lignes de données (colonne mois présente partout)
-    max_row = max(r for (r, c) in toutes_cellules.keys())
-    n_rows = max_row - 2  # lignes 3 à max_row
+    # 6. Nombre de lignes de données (lignes 3 à max_row)
+    n_rows = max(0, max_row - 2)
 
-    # 7. Construire le DataFrame
-    # Colonnes globales (positions détectées par nom ; valeurs par défaut si absentes)
+    # 7. Construire le DataFrame depuis les colonnes. Défauts IDENTIQUES à l'ancien
+    #    .get(..., np.nan) / .get(..., '') : NaN pour les numériques, '' pour saison,
+    #    avec la même tolérance aux cellules manquantes (positionnées par row-3).
     c_text  = col_par_global.get('T_ext')
     c_theta = col_par_global.get('theta_rm')
     c_sais  = col_par_global.get('saison')
+
+    def _col(c, default):
+        vals = [default] * n_rows
+        d = col_data.get(c)
+        if d:
+            for row, v in d.items():
+                idx = row - 3
+                if 0 <= idx < n_rows:
+                    vals[idx] = v
+        return vals
+
     data = {
-        'mois':    [toutes_cellules.get((r+3, 1), np.nan) for r in range(n_rows)],
-        'jour':    [toutes_cellules.get((r+3, 2), np.nan) for r in range(n_rows)],
-        'heure':   [toutes_cellules.get((r+3, 3), np.nan) for r in range(n_rows)],
-        'T_ext':   [toutes_cellules.get((r+3, c_text), np.nan) if c_text else np.nan for r in range(n_rows)],
-        'theta_rm':[toutes_cellules.get((r+3, c_theta), np.nan) if c_theta else np.nan for r in range(n_rows)],
-        'saison':  [toutes_cellules.get((r+3, c_sais), '') if c_sais else '' for r in range(n_rows)],
+        'mois':     _col(1, np.nan),
+        'jour':     _col(2, np.nan),
+        'heure':    _col(3, np.nan),
+        'T_ext':    _col(c_text, np.nan) if c_text else [np.nan] * n_rows,
+        'theta_rm': _col(c_theta, np.nan) if c_theta else [np.nan] * n_rows,
+        'saison':   _col(c_sais, '') if c_sais else [''] * n_rows,
     }
 
     # Colonnes par groupe/zone
@@ -183,8 +242,7 @@ def parse_resultats(filepath: str | Path) -> pd.DataFrame:
         if type_name not in noms_utiles:
             continue
         for col, zone in sorted(items):
-            key = f"{type_name}|{zone}"
-            data[key] = [toutes_cellules.get((r+3, col), np.nan) for r in range(n_rows)]
+            data[f"{type_name}|{zone}"] = _col(col, np.nan)
 
     df = pd.DataFrame(data)
     df['mois'] = df['mois'].astype(int, errors='ignore')

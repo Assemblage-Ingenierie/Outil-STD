@@ -96,12 +96,30 @@ def _polygone_givoni(t_min, t_max, hr_min, hr_max, t_top, hr_corner):
     return T, w
 
 
+# Cache des polygones du modèle. Les polygones ne dépendent QUE de la méthode et,
+# pour Givoni, de config['givoni']['hr_max_zones'] (le reste = constantes module).
+# Évite ~328 reconstructions (boucle + humidite_absolue) par calcul bâtiment.
+_ZONES_CACHE: dict = {}
+
+
+def _cle_zones(config: dict, methode: str):
+    methode = (methode or "givoni").lower()
+    hr_over = (config or {}).get("givoni", {}).get("hr_max_zones")
+    hr_key = tuple(hr_over) if hr_over else None
+    return (methode, hr_key)
+
+
 def zones_modele(config: dict, methode: str):
     """
     Retourne la liste des zones du modèle choisi :
       [(vitesse, libellé, T_array, w_array), ...]
     triées de la plus restreinte à la plus large.
+    Résultat mémoïsé par (méthode, hr_max_zones) ; polygones en lecture seule.
     """
+    cle = _cle_zones(config, methode)
+    cached = _ZONES_CACHE.get(cle)
+    if cached is not None:
+        return cached
     methode = (methode or "givoni").lower()
     out = []
     if methode == "coco":
@@ -114,6 +132,7 @@ def zones_modele(config: dict, methode: str):
             T, W = _polygone_givoni(t_min, t_max, hr_min, hr_max, t_top, hr_corner)
             label = label_zone(v)
             out.append((v, label, T, W))
+    _ZONES_CACHE[cle] = out
     return out
 
 

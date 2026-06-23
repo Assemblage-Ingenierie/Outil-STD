@@ -42,8 +42,8 @@ if %errorlevel% neq 0 (
 )
 
 echo [3/4] Nettoyage des anciens builds...
-if exist "dist\OuiSTD" rmdir /s /q "dist\OuiSTD"
-if exist "build\OuiSTD"  rmdir /s /q "build\OuiSTD"
+if exist "dist\Outil STD" rmdir /s /q "dist\Outil STD"
+if exist "build\Outil STD" rmdir /s /q "build\Outil STD"
 
 echo [4/4] Build PyInstaller (--onedir)...
 %PYTHON% -m PyInstaller outil_std.spec --noconfirm
@@ -57,11 +57,10 @@ if %errorlevel% neq 0 (
 echo.
 echo ============================================
 echo   Build termine avec succes !
-echo   Executable : dist\OuiSTD\OuiSTD.exe
+echo   Executable : dist\Outil STD\Outil STD.exe
 echo.
 echo   NOTE : A la premiere utilisation de l'export Word,
 echo   kaleido telecharge automatiquement Chrome (~150 Mo).
 echo   Besoin d'une connexion internet pour ce premier lancement.
 echo ============================================
 echo.
-pause

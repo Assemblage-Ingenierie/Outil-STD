@@ -30,6 +30,7 @@ sys.argv = [
     "streamlit", "run", app_file,
     "--global.developmentMode=false",
     "--server.port=8501",
+    "--server.address=localhost",
     "--server.headless=true",
     "--browser.gatherUsageStats=false",
     "--server.enableXsrfProtection=false",
