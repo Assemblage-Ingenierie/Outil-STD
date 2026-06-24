@@ -161,6 +161,12 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     hr_min = float(seuils.get('hr_confort_min', 40.0))
     hr_max = float(seuils.get('hr_confort_max', 70.0))
     st.subheader("Humidité relative")
+    # Garde-fou : sans colonne HR pour cette zone, le graphe sortirait vide (axe
+    # numérique -1..6 au lieu de dates). Message explicite plutôt que graphe muet.
+    if not any(not v.col_hr(zone).empty for v in variantes_sel):
+        st.info("Humidité relative indisponible pour cette zone : aucune colonne "
+                "« Humidité relative (%) » dans les résultats des variantes sélectionnées.")
+        return
     st.caption(f"HR intérieure par variante, HR extérieure (météo) en pointillés, "
                f"bande de confort {hr_min:.0f}–{hr_max:.0f} % en fond "
                "(modifiable dans l'onglet Réglages).")
