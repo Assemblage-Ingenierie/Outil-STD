@@ -200,6 +200,21 @@ class Variante:
             't_max': float(v.max()),
         }
 
+    def stats_hr(self, zone: str) -> dict:
+        """Min / moyenne / max d'humidité relative intérieure (%) sur la période."""
+        s = self.col_hr(zone)
+        if s.empty:
+            return {'hr_min': np.nan, 'hr_moy': np.nan, 'hr_max': np.nan}
+        v = s.values
+        v = v[self.masque_periode(len(v))]
+        if v.size == 0:
+            return {'hr_min': np.nan, 'hr_moy': np.nan, 'hr_max': np.nan}
+        return {
+            'hr_min': float(v.min()),
+            'hr_moy': float(v.mean()),
+            'hr_max': float(v.max()),
+        }
+
     def heures_hors_confort(self, zone: str, config: dict, vitesse: float,
                             methode: str = "givoni") -> int:
         """
@@ -396,6 +411,9 @@ class Variante:
         t_mins, t_maxs = [], []
         somme_tmoy_surf = 0.0
         somme_surf_pour_tmoy = 0.0
+        hr_mins, hr_maxs = [], []
+        somme_hrmoy_surf = 0.0
+        somme_surf_pour_hrmoy = 0.0
         # Confort : accumulateurs pour les deux vitesses en une seule passe (B)
         tot_hors_0 = tot_occ_0 = 0
         tot_hors_1 = tot_occ_1 = 0
@@ -415,6 +433,15 @@ class Variante:
             if stats['t_moy'] == stats['t_moy'] and surf == surf and surf > 0:
                 somme_tmoy_surf += stats['t_moy'] * surf
                 somme_surf_pour_tmoy += surf
+            # Humidité relative : min global, max global, moy pondérée surface
+            hr_stats = self.stats_hr(zone)
+            if hr_stats['hr_min'] == hr_stats['hr_min']:
+                hr_mins.append(hr_stats['hr_min'])
+            if hr_stats['hr_max'] == hr_stats['hr_max']:
+                hr_maxs.append(hr_stats['hr_max'])
+            if hr_stats['hr_moy'] == hr_stats['hr_moy'] and surf == surf and surf > 0:
+                somme_hrmoy_surf += hr_stats['hr_moy'] * surf
+                somme_surf_pour_hrmoy += surf
             # Confort 0 m/s et 1 m/s dans la même itération zone (B)
             h0, o0 = self._compte_hors_occupe(zone, config, 0.0, methode)
             tot_hors_0 += h0; tot_occ_0 += o0
@@ -429,6 +456,14 @@ class Variante:
             moys = [m for m in moys if m == m]
             t_moy = float(np.mean(moys)) if moys else np.nan
 
+        # HR moyenne pondérée surface ; repli moyenne simple si pas de surfaces
+        if somme_surf_pour_hrmoy > 0:
+            hr_moy = somme_hrmoy_surf / somme_surf_pour_hrmoy
+        else:
+            hr_moys = [self.stats_hr(z)['hr_moy'] for z in zones]
+            hr_moys = [m for m in hr_moys if m == m]
+            hr_moy = float(np.mean(hr_moys)) if hr_moys else np.nan
+
         result = {
             'Surface totale (m²)': round(surf_tot, 1) if surf_tot else np.nan,
             'Besoins chaud (kWh)': round(bch_tot, 0),
@@ -438,6 +473,9 @@ class Variante:
             'T min (°C)': round(min(t_mins), 1) if t_mins else np.nan,
             'T moy (°C)': round(t_moy, 1) if t_moy == t_moy else np.nan,
             'T max (°C)': round(max(t_maxs), 1) if t_maxs else np.nan,
+            'HR min (%)': round(min(hr_mins), 0) if hr_mins else np.nan,
+            'HR moy (%)': round(hr_moy, 0) if hr_moy == hr_moy else np.nan,
+            'HR max (%)': round(max(hr_maxs), 0) if hr_maxs else np.nan,
             f'% hors {libelle} 0 m/s': (100.0 * tot_hors_0 / tot_occ_0) if tot_occ_0 > 0 else np.nan,
             f'% hors {libelle} 1 m/s': (100.0 * tot_hors_1 / tot_occ_1) if tot_occ_1 > 0 else np.nan,
         }

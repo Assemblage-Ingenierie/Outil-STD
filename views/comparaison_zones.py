@@ -16,6 +16,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
         graphique_heures_depassement,
         graphique_apports_par_zone_mensuel,
     )
+    from charts.humidite import graphique_hr_min_moy_max
 
     if not variantes:
         st.info("Chargez au moins une variante dans le panneau latéral.")
@@ -96,6 +97,11 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
     st.subheader("Températures min / moyenne / max par zone")
     fig_t = graphique_temp_min_moy_max([var], zones_sel)
     st.plotly_chart(fig_t, use_container_width=True)
+
+    # -- Humidité relative min/moy/max en barres --
+    st.subheader("Humidité relative min / moyenne / max par zone")
+    fig_hr = graphique_hr_min_moy_max([var], zones_sel)
+    st.plotly_chart(fig_hr, use_container_width=True)
 
     # -- Heures de dépassement --
     st.subheader("Heures de dépassement")

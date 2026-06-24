@@ -67,6 +67,21 @@ def render_reglages():
                          help="Sévérité de l'inconfort : somme des écarts (T − seuil T1) "
                               "sur les heures d'occupation, en °C·h.")
 
+        st.subheader("Bande de confort hygrométrique")
+        sc = ss.config_projet.setdefault('seuils', {})
+        ch1, ch2 = st.columns(2)
+        with ch1:
+            hr_min = persist_number("HR min confort (%)", "cfg_hr_confort_min",
+                                    float(sc.get('hr_confort_min', 40.0)),
+                                    step=1.0, min_value=0.0, max_value=100.0)
+        with ch2:
+            hr_max = persist_number("HR max confort (%)", "cfg_hr_confort_max",
+                                    float(sc.get('hr_confort_max', 70.0)),
+                                    step=1.0, min_value=0.0, max_value=100.0)
+        sc['hr_confort_min'] = hr_min
+        sc['hr_confort_max'] = hr_max
+        st.caption("Plage HR cible tracée en fond du graphe d'humidité (Focus zone).")
+
         st.subheader("Modèle de confort")
         methode_label = persist_radio(
             "Diagramme bioclimatique", ["Givoni", "COCO (tropical)"], "cfg_methode_label",

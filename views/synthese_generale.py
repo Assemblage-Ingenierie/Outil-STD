@@ -40,6 +40,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
         'Besoins chaud (kWh)': '{:.0f}', 'Besoins froid (kWh)': '{:.0f}',
         'Besoins chaud (kWh/m²)': '{:.1f}', 'Besoins froid (kWh/m²)': '{:.1f}',
         'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
+        'HR min (%)': '{:.0f}', 'HR moy (%)': '{:.0f}', 'HR max (%)': '{:.0f}',
         **{c: '{:.1f} %' for c in cols_pct},
     }
     if dh_on:
@@ -56,10 +57,10 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
               .apply(_style_na, subset=cols_pct),
         use_container_width=True,
     )
-    st.caption("Indicateurs au niveau bâtiment. T moy = moyenne pondérée par la surface ; "
-               "T min/max = extrêmes toutes zones. « % hors » = heures d'occupation hors "
-               "zone de confort (pondéré par les heures d'occupation de chaque zone). "
-               "« NA » : aucune zone occupée.")
+    st.caption("Indicateurs au niveau bâtiment. T moy / HR moy = moyennes pondérées par la "
+               "surface ; T et HR min/max = extrêmes toutes zones. « % hors » = heures "
+               "d'occupation hors zone de confort (pondéré par les heures d'occupation de "
+               "chaque zone). « NA » : aucune zone occupée.")
 
     csv = df.to_csv().encode('utf-8-sig')
     st.download_button("⬇️ Exporter la synthèse (CSV)", data=csv,
@@ -73,6 +74,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     from config.charte import ROUGE, get_layout, grille_color, finalize_fig, bar_labels
 
     BLEU = "#2196F3"
+    TEAL = "#00897B"
     noms_var = list(df.index)
 
     def _layout(titre, ytitre):
@@ -104,6 +106,20 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
                            marker=dict(color=ROUGE, opacity=0.85), **bar_labels()))
     fig_t.update_layout(**_layout("Températures par variante (°C)", "°C"))
     st.plotly_chart(finalize_fig(fig_t), use_container_width=True)
+
+    # Humidité relative min / moy / max
+    st.subheader("Humidité relative du bâtiment")
+    fig_hr = go.Figure()
+    fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR min (%)"], name="HR min",
+                            marker=dict(color=BLEU, opacity=0.45), **bar_labels(".0f")))
+    fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR moy (%)"], name="HR moy",
+                            marker_color="#9E9E9E", **bar_labels(".0f")))
+    fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR max (%)"], name="HR max",
+                            marker=dict(color=TEAL, opacity=0.9), **bar_labels(".0f")))
+    fig_hr.update_layout(**_layout("Humidité relative par variante (%)", "HR (%)"))
+    # Dégagement au-dessus de 100 % pour ne pas couper l'étiquette « outside » du max
+    fig_hr.update_layout(yaxis_range=[0, 112])
+    st.plotly_chart(finalize_fig(fig_hr), use_container_width=True)
 
     # % hors confort 0 / 1 m/s
     st.subheader("Part d'inconfort (heures d'occupation)")

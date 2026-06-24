@@ -2,10 +2,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 
 from views.widgets import persist_multiselect, persist_selectbox
-from config.charte import COULEURS_VARIANTES, get_layout, grille_color, finalize_fig
 
 
 def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
@@ -16,9 +14,9 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
         graphique_text_vs_text_op,
         graphique_apports_solaires,
         graphique_meteo_comparaison,
-        _serie_vers_horodate,
     )
     from charts.givoni import creer_givoni
+    from charts.humidite import graphique_hr_horaire
 
     if not variantes:
         st.info("Chargez au moins une variante dans le panneau latéral.")
@@ -159,23 +157,23 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     st.plotly_chart(fig_int, use_container_width=True)
 
     # -- Humidité relative --
-    st.subheader("Humidité relative horaire")
-    fig_hr = go.Figure()
-    for i, var in enumerate(variantes_sel):
-        s_hr = var.col_hr(zone)
-        if s_hr.empty:
-            continue
-        x = _serie_vers_horodate(var.df_horaire)
-        fig_hr.add_trace(go.Scatter(
-            x=x, y=s_hr.values, mode='lines', name=var.nom,
-            line=dict(color=COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)], width=1),
-        ))
-    layout = get_layout()
-    layout.update(
-        title=f'Humidité relative — {zone}',
-        xaxis=dict(title='Date', gridcolor=grille_color()),
-        yaxis=dict(title='HR (%)', gridcolor=grille_color(), range=[0, 100]),
-        height=380,
-    )
-    fig_hr.update_layout(**layout)
-    st.plotly_chart(finalize_fig(fig_hr), use_container_width=True)
+    seuils = config.get('seuils', {}) if isinstance(config, dict) else {}
+    hr_min = float(seuils.get('hr_confort_min', 40.0))
+    hr_max = float(seuils.get('hr_confort_max', 70.0))
+    st.subheader("Humidité relative")
+    st.caption(f"HR intérieure par variante, HR extérieure (météo) en pointillés, "
+               f"bande de confort {hr_min:.0f}–{hr_max:.0f} % en fond "
+               "(modifiable dans l'onglet Réglages).")
+    c_agg, c_occ = st.columns([2, 2])
+    with c_agg:
+        agg_label = st.radio("Affichage", ["Moyenne journalière", "Horaire (détaillé)"],
+                             key="hr_agg", horizontal=True,
+                             help="Journalier : 1 point/jour (lisible), avec enveloppe "
+                                  "min–max si une seule variante. Horaire : 8 760 pts bruts.")
+        agregation = "horaire" if agg_label.startswith("Horaire") else "journalier"
+    with c_occ:
+        hr_occ_only = st.checkbox("Heures d'occupation seulement", value=False, key="hr_occ_only",
+                                  help="Exclut les heures inoccupées (apports occupants nuls).")
+    fig_hr = graphique_hr_horaire(variantes_sel, zone, hr_min=hr_min, hr_max=hr_max,
+                                  occupation_seulement=hr_occ_only, agregation=agregation)
+    st.plotly_chart(fig_hr, use_container_width=True)
