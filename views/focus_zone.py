@@ -16,7 +16,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
         graphique_meteo_comparaison,
     )
     from charts.givoni import creer_givoni
-    from charts.humidite import graphique_hr_horaire
+    from charts.humidite import graphique_hr_horaire, heatmap_hr_jour_heure
 
     if not variantes:
         st.info("Chargez au moins une variante dans le panneau latéral.")
@@ -170,16 +170,29 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     st.caption(f"HR intérieure par variante, HR extérieure (météo) en pointillés, "
                f"bande de confort {hr_min:.0f}–{hr_max:.0f} % en fond "
                "(modifiable dans l'onglet Réglages).")
-    c_agg, c_occ = st.columns([2, 2])
+    c_agg, c_occ = st.columns([3, 2])
     with c_agg:
-        agg_label = st.radio("Affichage", ["Moyenne journalière", "Horaire (détaillé)"],
-                             key="hr_agg", horizontal=True,
-                             help="Journalier : 1 point/jour (lisible), avec enveloppe "
-                                  "min–max si une seule variante. Horaire : 8 760 pts bruts.")
-        agregation = "horaire" if agg_label.startswith("Horaire") else "journalier"
+        mode_label = st.radio(
+            "Affichage",
+            ["Moyenne journalière", "Horaire (zoomable)", "Carte jour × heure"],
+            key="hr_mode", horizontal=True,
+            help="Journalier : 1 pt/jour (lisible), enveloppe min–max si une seule "
+                 "variante. Horaire : courbe brute, zoomable au curseur (fenêtre de "
+                 "4 semaines par défaut). Carte : heatmap jour × heure, lit le cycle "
+                 "journalier et la saison d'un coup (une carte par variante).")
     with c_occ:
         hr_occ_only = st.checkbox("Heures d'occupation seulement", value=False, key="hr_occ_only",
                                   help="Exclut les heures inoccupées (apports occupants nuls).")
-    fig_hr = graphique_hr_horaire(variantes_sel, zone, hr_min=hr_min, hr_max=hr_max,
-                                  occupation_seulement=hr_occ_only, agregation=agregation)
-    st.plotly_chart(fig_hr, use_container_width=True)
+
+    if mode_label.startswith("Carte"):
+        st.caption("Couleur = HR % (échelle fixe 20–100, variantes comparables). "
+                   "Une carte par variante sélectionnée.")
+        for i, var in enumerate(variantes_sel):
+            fig_hm = heatmap_hr_jour_heure(var, zone, occupation_seulement=hr_occ_only)
+            if fig_hm is not None:
+                st.plotly_chart(fig_hm, use_container_width=True, key=f"hr_hm_{i}")
+    else:
+        agregation = "horaire" if mode_label.startswith("Horaire") else "journalier"
+        fig_hr = graphique_hr_horaire(variantes_sel, zone, hr_min=hr_min, hr_max=hr_max,
+                                      occupation_seulement=hr_occ_only, agregation=agregation)
+        st.plotly_chart(fig_hr, use_container_width=True)

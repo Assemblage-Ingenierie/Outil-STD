@@ -65,3 +65,26 @@ def test_graphique_hr_min_moy_max_smoke(tmp_path):
     # 3 barres (min/moy/max) attendues
     noms = {tr.name for tr in fig.data}
     assert {"HR min", "HR moy", "HR max"} <= noms
+
+
+def test_graphique_hr_axe_date_et_rangeslider(tmp_path):
+    """Régression : l'axe X doit être typé 'date' (sinon plotly.js infère un axe
+    linéaire à cause du marqueur de légende x=[None] → graphe vide). Le mode
+    horaire active en plus le rangeslider de navigation."""
+    from charts.humidite import graphique_hr_horaire
+    v = _variante_hr(tmp_path, ["A"])
+    fig_j = graphique_hr_horaire([v], "A", agregation="journalier")
+    assert fig_j.layout.xaxis.type == "date"
+    fig_h = graphique_hr_horaire([v], "A", agregation="horaire")
+    assert fig_h.layout.xaxis.type == "date"
+    assert fig_h.layout.xaxis.rangeslider.visible is True
+
+
+def test_heatmap_hr_jour_heure_smoke(tmp_path):
+    import plotly.graph_objects as go
+    from charts.humidite import heatmap_hr_jour_heure
+    v = _variante_hr(tmp_path, ["A", "B"])
+    fig = heatmap_hr_jour_heure(v, "A")
+    assert fig is not None
+    assert any(isinstance(tr, go.Heatmap) for tr in fig.data)
+    assert heatmap_hr_jour_heure(v, "ZZZ") is None      # zone absente → None

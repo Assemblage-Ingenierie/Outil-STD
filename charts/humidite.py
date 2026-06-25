@@ -124,17 +124,91 @@ def graphique_hr_horaire(
             hovertemplate='%{x|%d %b}<br>HR_ext=%{y:.0f}%<extra>' + label + '</extra>'))
 
     suffixe = " (moyenne journalière)" if journalier else " (horaire)"
+    # type='date' explicite : sans ça, plotly.js infère le type d'axe depuis
+    # la 1re trace (le marqueur de légende « Confort », x=[None]) → axe linéaire
+    # -1..6 et toutes les courbes datées disparaissent.
+    xaxis = dict(title='Date', type='date', gridcolor=grille_color())
+    height = 400
+    if not journalier:
+        # Mode horaire : ~8 760 pts/an illisibles d'un bloc → fenêtre initiale
+        # de ~4 semaines + rangeslider (contexte annuel) + boutons de zoom.
+        base = interieures[0] if interieures else (variantes[0] if variantes else None)
+        if base is not None:
+            xs = np.asarray(_serie_vers_horodate(base.df_horaire))
+            mm = base.masque_periode(len(xs))
+            xs = xs[mm]
+            if len(xs):
+                x0 = pd.Timestamp(xs.min())
+                x1 = min(pd.Timestamp(xs.max()), x0 + pd.Timedelta(days=28))
+                # ISO strings : un pd.Timestamp scalaire dans layout.range n'est
+                # pas sérialisable JSON (orjson) — contrairement aux datetime64
+                # des traces.
+                xaxis['range'] = [x0.isoformat(), x1.isoformat()]
+        xaxis['rangeslider'] = dict(visible=True, thickness=0.06)
+        xaxis['rangeselector'] = dict(buttons=[
+            dict(count=1, label='1 mois', step='month', stepmode='backward'),
+            dict(count=3, label='3 mois', step='month', stepmode='backward'),
+            dict(step='all', label='Année'),
+        ])
+        height = 480
     layout = get_layout()
     layout.update(
         title=titre or f'Humidité relative — {zone}{suffixe}',
-        # type='date' explicite : sans ça, plotly.js infère le type d'axe depuis
-        # la 1re trace (le marqueur de légende « Confort », x=[None]) → axe linéaire
-        # -1..6 et toutes les courbes datées disparaissent.
-        xaxis=dict(title='Date', type='date', gridcolor=grille_color()),
+        xaxis=xaxis,
         # Marge haute : l'HR plafonne physiquement à 100 % (locaux humides),
         # le range va jusqu'à 105 pour décoller les courbes du bord supérieur.
         yaxis=dict(title='HR (%)', gridcolor=grille_color(), range=[0, 105]),
-        height=400,
+        height=height,
+    )
+    fig.update_layout(**layout)
+    return finalize_fig(fig)
+
+
+def heatmap_hr_jour_heure(
+    var,                       # Variante
+    zone: str,
+    occupation_seulement: bool = False,
+    titre: str | None = None,
+) -> go.Figure | None:
+    """
+    Carte de chaleur de l'HR intérieure : jour (x) × heure du jour (y),
+    couleur = HR %. Lit d'un coup le cycle journalier ET la dérive saisonnière
+    des ~8 760 valeurs horaires de l'année. Une carte par variante.
+
+    - Respecte la période d'analyse active et le filtre heures d'occupation
+      (heures écartées → trous transparents sur la carte).
+    - Échelle de couleur fixe 20–100 % : deux variantes sont directement
+      comparables (même couleur = même HR).
+    Retourne None si la zone n'a pas de colonne HR.
+    """
+    s = var.col_hr(zone)
+    if s.empty:
+        return None
+    n = len(s)
+    xi = pd.DatetimeIndex(np.asarray(_serie_vers_horodate(var.df_horaire))[:n])
+    y = np.asarray(s.values[:n], dtype=float)
+    if occupation_seulement:
+        occ = var.col_apports_occupants(zone)
+        if not occ.empty:
+            y = y.copy()
+            y[~(occ.values[:n] > 0)] = np.nan
+    m = var.masque_periode(n)
+    xi, y = xi[m], y[m]
+    if len(xi) == 0:
+        return None
+    d = pd.DataFrame({'date': xi.normalize(), 'hour': xi.hour, 'hr': y})
+    piv = d.pivot_table(index='hour', columns='date', values='hr').reindex(range(24))
+    fig = go.Figure(go.Heatmap(
+        x=piv.columns, y=piv.index, z=piv.values,
+        colorscale='YlGnBu', zmin=20, zmax=100,
+        colorbar=dict(title='HR %'),
+        hovertemplate='%{x|%d %b} · %{y}h<br>HR = %{z:.0f}%<extra></extra>'))
+    layout = get_layout()
+    layout.update(
+        title=titre or f'HR horaire — {zone} · {var.nom} (jour × heure)',
+        xaxis=dict(title='Date', type='date'),
+        yaxis=dict(title='Heure', dtick=6, range=[-0.5, 23.5]),
+        height=360,
     )
     fig.update_layout(**layout)
     return finalize_fig(fig)
