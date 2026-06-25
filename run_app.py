@@ -6,6 +6,17 @@ import sys
 import os
 from pathlib import Path
 
+# Adresse loopback EXPLICITE en IPv4 (127.0.0.1) plutôt que « localhost » :
+# sur certains postes Windows/entreprise, « localhost » se résout en IPv6 (::1)
+# alors que le serveur écoute en IPv4 → ERR_CONNECTION_REFUSED dans le navigateur
+# bien que le serveur tourne. Et on neutralise un éventuel proxy d'entreprise
+# pour les adresses locales (sinon les appels internes partent vers le proxy).
+HOST = "127.0.0.1"
+PORT = 8501
+URL = f"http://{HOST}:{PORT}"
+os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
+os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
+
 if getattr(sys, "frozen", False):
     base = Path(sys._MEIPASS)
     os.chdir(base)
@@ -18,9 +29,6 @@ import threading
 import time
 import urllib.request
 import webbrowser
-
-PORT = 8501
-URL = f"http://localhost:{PORT}"
 
 
 def _ouvrir_navigateur():
@@ -51,7 +59,7 @@ sys.argv = [
     "streamlit", "run", app_file,
     "--global.developmentMode=false",
     f"--server.port={PORT}",
-    "--server.address=localhost",
+    f"--server.address={HOST}",
     "--server.headless=true",
     "--browser.gatherUsageStats=false",
     "--server.enableXsrfProtection=false",
