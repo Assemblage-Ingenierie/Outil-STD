@@ -127,7 +127,10 @@ def graphique_hr_horaire(
     layout = get_layout()
     layout.update(
         title=titre or f'Humidité relative — {zone}{suffixe}',
-        xaxis=dict(title='Date', gridcolor=grille_color()),
+        # type='date' explicite : sans ça, plotly.js infère le type d'axe depuis
+        # la 1re trace (le marqueur de légende « Confort », x=[None]) → axe linéaire
+        # -1..6 et toutes les courbes datées disparaissent.
+        xaxis=dict(title='Date', type='date', gridcolor=grille_color()),
         yaxis=dict(title='HR (%)', gridcolor=grille_color(), range=[0, 100]),
         height=400,
     )
