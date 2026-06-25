@@ -131,7 +131,9 @@ def graphique_hr_horaire(
         # la 1re trace (le marqueur de légende « Confort », x=[None]) → axe linéaire
         # -1..6 et toutes les courbes datées disparaissent.
         xaxis=dict(title='Date', type='date', gridcolor=grille_color()),
-        yaxis=dict(title='HR (%)', gridcolor=grille_color(), range=[0, 100]),
+        # Marge haute : l'HR plafonne physiquement à 100 % (locaux humides),
+        # le range va jusqu'à 105 pour décoller les courbes du bord supérieur.
+        yaxis=dict(title='HR (%)', gridcolor=grille_color(), range=[0, 105]),
         height=400,
     )
     fig.update_layout(**layout)
