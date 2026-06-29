@@ -33,6 +33,24 @@ class Variante:
     def a_meteo(self) -> bool:
         return self.df_meteo is not None and not self.df_meteo.empty
 
+    def a_chauffage(self) -> bool:
+        """Le bâtiment est-il chauffé dans cette simulation ?
+        Vrai si la colonne saison comporte une saison de chauffe OU si au moins
+        une zone a une puissance de chauffage > 0. Les exports Pléiades ne
+        renseignent pas toujours la colonne « saison » ; P chauffage est
+        l'indicateur direct (même source que `_est_chauffe`, qui pilote
+        l'exemption chauffe-sous-consigne). Sert à n'afficher l'hypothèse
+        correspondante sur le Givoni que pour les climats avec chauffage."""
+        if 'saison' in self.df_horaire:
+            s = self.df_horaire['saison'].astype(str).str.lower()
+            if bool(s.str.contains('chauff').any()):
+                return True
+        for z in self.zones:
+            pch = self.col_p_chaud(z)
+            if not pch.empty and bool((pch.values > 0).any()):
+                return True
+        return False
+
     def masque_periode(self, n: int | None = None):
         """
         Masque booléen des heures appartenant à la période d'analyse active
@@ -83,20 +101,30 @@ class Variante:
     def _precalculer_w_interieur(self):
         """Calcule w_intérieur (g/kg) pour toutes les zones et le stocke dans
         df_horaire sous la clé ``w_interieur|<zone>``. Appelé une seule fois
-        à la création de la Variante."""
-        cols = self.df_horaire.columns
+        à la création de la Variante.
+
+        Les colonnes sont ajoutées en UN SEUL ``pd.concat`` (et non insérées une
+        par une) : avec ~164 zones, l'insertion répétée fragmentait fortement le
+        DataFrame (PerformanceWarning pandas + accès ralenti)."""
+        cols = set(self.df_horaire.columns)
+        nouvelles = {}
         for zone in self.zones:
             w_key = f"w_interieur|{zone}"
-            if w_key in cols:
+            if w_key in cols or w_key in nouvelles:
                 continue   # déjà calculé (ex. variante reconstruite depuis un cache)
             t_key = f"Température (°C)|{zone}"
             hr_key = f"Humidité relative (%)|{zone}"
             if t_key not in cols or hr_key not in cols:
                 continue
-            t_vals = self.df_horaire[t_key].values
-            hr_vals = self.df_horaire[hr_key].values
-            w = humidite_absolue(t_vals, hr_vals)
-            self.df_horaire[w_key] = w
+            nouvelles[w_key] = humidite_absolue(
+                self.df_horaire[t_key].values, self.df_horaire[hr_key].values)
+        if nouvelles:
+            attrs = dict(self.df_horaire.attrs)   # pd.concat ne préserve pas attrs
+            self.df_horaire = pd.concat(
+                [self.df_horaire,
+                 pd.DataFrame(nouvelles, index=self.df_horaire.index)],
+                axis=1)
+            self.df_horaire.attrs.update(attrs)
 
     # ------------------------------------------------------------------
     # Accesseurs colonnes horaires
@@ -185,6 +213,34 @@ class Variante:
         v = s.values
         v = v[self.masque_periode(len(v))]
         return int((v > seuil).sum())
+
+    def heures_sous_seuil(self, zone: str, seuil: float) -> int:
+        """Nombre d'heures où T intérieure < seuil (seuil bas T0), sur la période."""
+        s = self.col_temp(zone)
+        if s.empty:
+            return 0
+        v = s.values
+        v = v[self.masque_periode(len(v))]
+        return int((v < seuil).sum())
+
+    def masque_jour(self, n: int, jour_debut: float, jour_fin: float):
+        """
+        Masque booléen des heures appartenant à la plage « jour » = heure du
+        jour dans [jour_debut, jour_fin). La nuit est le complément.
+        Gère une plage de jour à cheval sur minuit (jour_debut > jour_fin).
+        La colonne « heure » est 1..24 → heure du jour = heure − 1 (0..23).
+        """
+        h = self.df_horaire['heure'].values[:n].astype(float) - 1.0
+        if jour_debut <= jour_fin:
+            return (h >= jour_debut) & (h < jour_fin)
+        return (h >= jour_debut) | (h < jour_fin)
+
+    def masque_mois_periode(self, n: int, m1: int, m2: int):
+        """Masque booléen des heures dont le mois ∈ [m1, m2] (gère le cheval d'année)."""
+        mois = self.df_horaire['mois'].values[:n]
+        if m1 <= m2:
+            return (mois >= m1) & (mois <= m2)
+        return (mois >= m1) | (mois <= m2)
 
     def stats_temp(self, zone: str) -> dict:
         s = self.col_temp(zone)
@@ -289,10 +345,14 @@ class Variante:
         return 100.0 * n_hors / n_occ
 
     def _compte_hors_occupe(self, zone: str, config: dict, vitesse: float,
-                            methode: str = "givoni") -> tuple[int, int]:
+                            methode: str = "givoni",
+                            masque_extra=None) -> tuple[int, int]:
         """
         Retourne (heures occupées ET hors confort, heures d'occupation) pour
         une zone. Sert au % par zone et au % agrégé bâtiment.
+
+        masque_extra : masque booléen optionnel restreignant le décompte à un
+        sous-ensemble d'heures (plage jour/nuit, période de focus…).
         """
         t = self.col_temp(zone)
         w = self.col_w_interieur(zone)
@@ -301,6 +361,8 @@ class Variante:
             return 0, 0
         n = min(len(t), len(w), len(occ))
         occupe = (occ.values[:n] > 0) & self.masque_periode(n)
+        if masque_extra is not None:
+            occupe = occupe & np.asarray(masque_extra)[:n]
         n_occ = int(occupe.sum())
         if n_occ == 0:
             return 0, 0
@@ -382,15 +444,20 @@ class Variante:
     # ------------------------------------------------------------------
 
     def indicateurs_batiment(self, config: dict, methode: str = "givoni",
-                             zones: list[str] | None = None) -> dict:
+                             zones: list[str] | None = None,
+                             seuil_t0: float | None = None,
+                             seuil_t1: float | None = None,
+                             seuil_t2: float | None = None) -> dict:
         """
         Indicateurs agrégés sur l'ensemble du bâtiment (zones données ou toutes) :
           - Surface totale (somme)
           - Besoins chaud / froid : totaux (kWh) et ratios (kWh/m²)
           - T min (mini global), T moy (moyenne pondérée surface), T max (maxi global)
           - % hors confort 0 / 1 m/s : pondéré par heures d'occupation
-        Résultat mis en cache par (methode, config_hash, zones) — recalculé
-        seulement si la configuration change.
+          - (si seuils fournis) H > T1, H > T2, H < T0 : heures moyennes par zone,
+            pondérées par la surface utile.
+        Résultat mis en cache par (methode, config_hash, zones, seuils) —
+        recalculé seulement si la configuration change.
         """
         config = config or {}
         zones = zones if zones is not None else self.zones
@@ -401,7 +468,8 @@ class Variante:
             config_key = hash(repr(sorted(config.items())))
         except Exception:
             config_key = id(config)
-        cache_key = (methode, config_key, tuple(zones), self.periode)
+        cache_key = (methode, config_key, tuple(zones), self.periode,
+                     seuil_t0, seuil_t1, seuil_t2)
         if cache_key in self._cache_ind:
             return self._cache_ind[cache_key]
         # -----------------------------------------------------------------
@@ -417,6 +485,9 @@ class Variante:
         # Confort : accumulateurs pour les deux vitesses en une seule passe (B)
         tot_hors_0 = tot_occ_0 = 0
         tot_hors_1 = tot_occ_1 = 0
+        # Heures de dépassement de seuils, pondérées par la surface utile
+        h_num = {'t1': 0.0, 't2': 0.0, 't0': 0.0}
+        h_den = 0.0
 
         for zone in zones:
             syn = self.synthese_zone(zone)
@@ -426,6 +497,16 @@ class Variante:
                 surf_tot += (surf if surf == surf else 0.0)
                 bch_tot += syn.get('besoins_chaud_kwh', 0.0) or 0.0
                 bfr_tot += syn.get('besoins_froid_kwh', 0.0) or 0.0
+            # Heures de dépassement pondérées surface (uniquement si seuils fournis)
+            if surf == surf and surf > 0 and (
+                    seuil_t1 is not None or seuil_t2 is not None or seuil_t0 is not None):
+                if seuil_t1 is not None:
+                    h_num['t1'] += self.heures_dessus_seuil(zone, seuil_t1) * surf
+                if seuil_t2 is not None:
+                    h_num['t2'] += self.heures_dessus_seuil(zone, seuil_t2) * surf
+                if seuil_t0 is not None:
+                    h_num['t0'] += self.heures_sous_seuil(zone, seuil_t0) * surf
+                h_den += surf
             if stats['t_min'] == stats['t_min']:
                 t_mins.append(stats['t_min'])
             if stats['t_max'] == stats['t_max']:
@@ -479,8 +560,113 @@ class Variante:
             f'% hors {libelle} 0 m/s': (100.0 * tot_hors_0 / tot_occ_0) if tot_occ_0 > 0 else np.nan,
             f'% hors {libelle} 1 m/s': (100.0 * tot_hors_1 / tot_occ_1) if tot_occ_1 > 0 else np.nan,
         }
+        # Heures moyennes par zone, pondérées surface (insérées après les
+        # températures pour rester proches des T° dans le tableau de synthèse).
+        if seuil_t1 is not None or seuil_t2 is not None or seuil_t0 is not None:
+            cles = list(result.keys())
+            extra = {}
+            if seuil_t0 is not None:
+                extra[f'H < {seuil_t0:.0f}°C'] = round(h_num['t0'] / h_den, 0) if h_den else np.nan
+            if seuil_t1 is not None:
+                extra[f'H > {seuil_t1:.0f}°C'] = round(h_num['t1'] / h_den, 0) if h_den else np.nan
+            if seuil_t2 is not None:
+                extra[f'H > {seuil_t2:.0f}°C'] = round(h_num['t2'] / h_den, 0) if h_den else np.nan
+            # Réinsérer juste après 'T max (°C)' si présent, sinon à la fin
+            result_ord = {}
+            for k in cles:
+                result_ord[k] = result[k]
+                if k == 'T max (°C)':
+                    result_ord.update(extra)
+            if 'T max (°C)' not in cles:
+                result_ord.update(extra)
+            result = result_ord
         self._cache_ind[cache_key] = result
         return result
+
+    # ------------------------------------------------------------------
+    # Inconfort par plage horaire (jour / nuit) — niveau bâtiment
+    # ------------------------------------------------------------------
+
+    def inconfort_plages_horaires(self, config: dict, methode: str = "givoni",
+                                  jour_debut: float = 7.0, jour_fin: float = 22.0,
+                                  zones: list[str] | None = None) -> dict:
+        """
+        % d'heures d'occupation hors confort (modèle actif) ventilé par plage
+        horaire jour / nuit, pour les vitesses 0 et 1 m/s. Agrégat bâtiment =
+        moyenne des % par zone pondérée par la surface utile.
+        """
+        config = config or {}
+        zones = zones if zones is not None else self.zones
+        out = {}
+        for vit in (0.0, 1.0):
+            for plage, est_nuit in (("jour", False), ("nuit", True)):
+                num = den = 0.0
+                for z in zones:
+                    t = self.col_temp(z)
+                    if t.empty:
+                        continue
+                    n = len(t)
+                    mj = self.masque_jour(n, jour_debut, jour_fin)
+                    masque = (~mj) if est_nuit else mj
+                    hors, occ = self._compte_hors_occupe(z, config, vit, methode,
+                                                         masque_extra=masque)
+                    if occ <= 0:
+                        continue
+                    syn = self.synthese_zone(z)
+                    surf = syn.get('surface_m2', np.nan) if syn else np.nan
+                    poids = surf if (surf == surf and surf > 0) else 1.0
+                    num += (100.0 * hors / occ) * poids
+                    den += poids
+                out[f'% inconfort {plage} {vit:.0f} m/s'] = (num / den) if den else np.nan
+        return out
+
+    # ------------------------------------------------------------------
+    # Périodes de focus (module optionnel) — segmentation par plages de mois
+    # ------------------------------------------------------------------
+
+    def points_interieurs_par_periode(self, zone: str, config: dict,
+                                      periodes: list[dict], methode: str = "givoni"):
+        """
+        Conditions intérieures (T, w) pour le diagramme bioclimatique, étiquetées
+        par période de focus (le premier intervalle de mois correspondant gagne).
+        Retourne {'T', 'w', 'periode'} (arrays numpy). Heures hors période = ''.
+        """
+        t = self.col_temp(zone)
+        w = self.col_w_interieur(zone)
+        if t.empty or w.empty:
+            return {'T': np.array([]), 'w': np.array([]), 'periode': np.array([])}
+        n = min(len(t), len(w))
+        T = t.values[:n]
+        W = w.values[:n]
+        exempt = confort.masque_chauffe_sous_consigne(T, self._est_chauffe(zone, n), config, methode)
+        garde = (~exempt) & self.masque_periode(n)
+        per = np.full(n, '', dtype=object)
+        for p in (periodes or []):
+            mk = self.masque_mois_periode(n, int(p['m1']), int(p['m2']))
+            libre = per == ''
+            per[mk & libre] = p.get('nom', '')
+        return {'T': T[garde], 'w': W[garde], 'periode': np.asarray(per)[garde]}
+
+    def inconfort_periodes(self, zone: str, config: dict, periodes: list[dict],
+                           methode: str = "givoni", vitesse: float = 0.0) -> list[dict]:
+        """
+        Pour chaque période de focus : heures d'occupation, heures hors confort
+        et % d'inconfort de la zone (à la vitesse d'air donnée, 0 m/s par défaut).
+        """
+        config = config or {}
+        t = self.col_temp(zone)
+        n = len(t) if not t.empty else len(self.df_horaire)
+        rows = []
+        for p in (periodes or []):
+            mk = self.masque_mois_periode(n, int(p['m1']), int(p['m2']))
+            hors, occ = self._compte_hors_occupe(zone, config, vitesse, methode,
+                                                 masque_extra=mk)
+            pct = (100.0 * hors / occ) if occ > 0 else np.nan
+            rows.append({'periode': p.get('nom', ''),
+                         'heures_inconfort': hors,
+                         'heures_occ': occ,
+                         'pct': pct})
+        return rows
 
 
 def charger_variante(

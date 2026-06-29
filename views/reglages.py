@@ -58,6 +58,9 @@ def render_reglages():
         ss.config_projet.setdefault('projet', {})['nom'] = nom
 
         st.subheader("Seuils de température")
+        persist_number("Seuil T0 — température basse (°C)", "cfg_seuil_t0", 18.0,
+                       step=0.5, min_value=5.0, max_value=25.0,
+                       help="Heures sous ce seuil comptabilisées (inconfort par le froid).")
         persist_number("Seuil T1 (°C)", "cfg_seuil_t1", 26.0,
                        step=0.5, min_value=15.0, max_value=40.0)
         persist_number("Seuil T2 (°C)", "cfg_seuil_t2", 28.0,
@@ -66,6 +69,17 @@ def render_reglages():
                          default=False,
                          help="Sévérité de l'inconfort : somme des écarts (T − seuil T1) "
                               "sur les heures d'occupation, en °C·h.")
+
+        st.subheader("Plages horaires jour / nuit")
+        cj1, cj2 = st.columns(2)
+        with cj1:
+            persist_number("Début du jour (h)", "cfg_jour_debut", 7.0,
+                           step=1.0, min_value=0.0, max_value=23.0)
+        with cj2:
+            persist_number("Fin du jour (h)", "cfg_jour_fin", 22.0,
+                           step=1.0, min_value=1.0, max_value=24.0)
+        st.caption("« Jour » = heures dans [début, fin) ; « Nuit » = le complément. "
+                   "Sert au tableau d'inconfort jour/nuit (Synthèse générale).")
 
         st.subheader("Bande de confort hygrométrique")
         sc = ss.config_projet.setdefault('seuils', {})
@@ -134,6 +148,42 @@ def render_reglages():
         else:
             ss['cfg_periode'] = val
 
+        st.subheader("Périodes de focus (module optionnel)")
+        persist_checkbox(
+            "Activer les périodes de focus", "cfg_periodes_on", default=False,
+            help="Segmente l'année en plages de mois nommées (ex. Été / Hiver). "
+                 "Alternative à la saison Pléiades : colore le diagramme de Givoni "
+                 "par période et produit un tableau récap (heures + % d'inconfort) "
+                 "dans la vue Focus zone.")
+        if ss.get('cfg_periodes_on'):
+            periodes = ss.get('cfg_periodes') or [{'nom': 'Été', 'm1': 5, 'm2': 10}]
+            mois_noms = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû',
+                         'Sep', 'Oct', 'Nov', 'Déc']
+            n_per = int(st.number_input("Nombre de périodes", min_value=1, max_value=6,
+                                        value=min(max(len(periodes), 1), 6), step=1,
+                                        key="cfg_n_periodes"))
+            nouvelles = []
+            for i in range(n_per):
+                base = periodes[i] if i < len(periodes) else {
+                    'nom': f'Période {i + 1}', 'm1': 1, 'm2': 12}
+                pc1, pc2, pc3 = st.columns([3, 2, 2])
+                nom = pc1.text_input("Nom", value=base.get('nom', f'Période {i + 1}'),
+                                     key=f"per_nom_{i}", label_visibility="collapsed",
+                                     placeholder=f"Nom période {i + 1}")
+                m1 = pc2.selectbox("Mois début", list(range(1, 13)),
+                                   index=int(base.get('m1', 1)) - 1,
+                                   format_func=lambda m: mois_noms[m - 1],
+                                   key=f"per_m1_{i}", label_visibility="collapsed")
+                m2 = pc3.selectbox("Mois fin", list(range(1, 13)),
+                                   index=int(base.get('m2', 12)) - 1,
+                                   format_func=lambda m: mois_noms[m - 1],
+                                   key=f"per_m2_{i}", label_visibility="collapsed")
+                nouvelles.append({'nom': nom or f'Période {i + 1}',
+                                  'm1': int(m1), 'm2': int(m2)})
+            ss['cfg_periodes'] = nouvelles
+            st.caption("Le 1er intervalle de mois correspondant l'emporte (ordre ci-dessus). "
+                       "Une plage à cheval sur l'année (ex. Nov→Avr) est admise.")
+
         st.subheader("Affichage")
         persist_checkbox("Nombres au format français (virgule décimale)",
                          "cfg_format_fr", default=True)
@@ -181,7 +231,7 @@ def _section_meteo_projet():
     if 'meteo_projet' not in ss:
         ss['meteo_projet'] = ''
     if st.button("📂 Définir la météo par défaut (.try)", key="btn_meteo_projet",
-                 use_container_width=True):
+                 width='stretch'):
         chemin = choisir_fichier("Météo par défaut du projet",
                                  [("Fichiers météo", "*.try"), ("Tous", "*.*")])
         if chemin:
@@ -220,7 +270,7 @@ def _section_ajout_variante():
     with st.container(border=True):
         nom_var = st.text_input("Nom de la variante", value="Variante 1", key="nom_var_input")
 
-        if st.button("📂 Résultats (.slk)", key="btn_pick_resultats", use_container_width=True):
+        if st.button("📂 Résultats (.slk)", key="btn_pick_resultats", width='stretch'):
             c = choisir_fichier("Sélectionner le fichier Résultats",
                                 [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
             if c:
@@ -229,7 +279,7 @@ def _section_ajout_variante():
         if ss.sel_resultats:
             st.caption(f"✓ {Path(ss.sel_resultats).name}")
 
-        if st.button("📂 Synthèse (.slk)", key="btn_pick_synthese", use_container_width=True):
+        if st.button("📂 Synthèse (.slk)", key="btn_pick_synthese", width='stretch'):
             c = choisir_fichier("Sélectionner le fichier Synthèse",
                                 [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
             if c:
@@ -239,7 +289,7 @@ def _section_ajout_variante():
             st.caption(f"✓ {Path(ss.sel_synthese).name}")
 
         meteo_projet = ss.get('meteo_projet', '')
-        if st.button("📂 Météo spécifique (.try)", key="btn_pick_meteo", use_container_width=True):
+        if st.button("📂 Météo spécifique (.try)", key="btn_pick_meteo", width='stretch'):
             c = choisir_fichier("Météo spécifique à cette variante",
                                 [("Fichiers météo", "*.try"), ("Tous", "*.*")])
             if c:
@@ -323,6 +373,11 @@ def _section_export():
                     methode=ss.get('cfg_methode', 'givoni'),
                     df_recap=df_recap,
                     df_detail=df_detail,
+                    seuil_t0=ss.get('cfg_seuil_t0', 18.0),
+                    jour_debut=ss.get('cfg_jour_debut', 7.0),
+                    jour_fin=ss.get('cfg_jour_fin', 22.0),
+                    periodes_on=ss.get('cfg_periodes_on', False),
+                    periodes=ss.get('cfg_periodes', []),
                 )
                 st.download_button(
                     "⬇️ Télécharger le rapport", data=buf,
@@ -331,35 +386,6 @@ def _section_export():
                     key="dl_rapport")
             except Exception as e:
                 st.error(f"Erreur rapport : {e}")
-
-    st.markdown("---")
-    st.subheader("📊 Export Excel (toutes les tables)")
-    st.caption("Un classeur multi-onglets : synthèse, focus, comparaison, améliorations.")
-    if st.button("Générer le classeur Excel", key="btn_excel"):
-        if not ss.variantes:
-            st.error("Chargez au moins une variante.")
-            return
-        from views.description_variantes import construire_recap
-        zone_focus = ss.get('sel_focus_zone')
-        var_comp = next((v for v in ss.variantes if v.nom == ss.get('sel_comp_variante')), None)
-        zones_comp = ss.get('sel_comp_zones', [])
-        noms = [v.nom for v in ss.variantes]
-        with st.spinner("Génération du classeur Excel…"):
-            try:
-                from export.excel_export import generer_excel
-                buf = generer_excel(
-                    variantes=ss.variantes, config=ss.config_projet,
-                    seuil_t1=ss.get('cfg_seuil_t1', 26.0), seuil_t2=ss.get('cfg_seuil_t2', 28.0),
-                    methode=ss.get('cfg_methode', 'givoni'), dh_on=ss.get('cfg_dh_on', False),
-                    zone_focus=zone_focus, var_comp=var_comp, zones_comp=zones_comp,
-                    df_recap=construire_recap(noms), df_detail=ss.get('ameliorations'))
-                st.download_button(
-                    "⬇️ Télécharger le classeur", data=buf,
-                    file_name=f"tables_STD_{ss.get('cfg_nom_projet','projet').replace(' ', '_')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="dl_excel")
-            except Exception as e:
-                st.error(f"Erreur Excel : {e}")
 
 
 # ----------------------------------------------------------------------

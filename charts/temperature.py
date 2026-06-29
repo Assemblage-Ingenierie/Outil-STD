@@ -348,6 +348,57 @@ def graphique_apports_solaires(
     return finalize_fig(fig)
 
 
+def heatmap_temp_jour_heure(
+    var,                       # Variante
+    zone: str,
+    occupation_seulement: bool = False,
+    zmin: float | None = None,
+    zmax: float | None = None,
+    titre: str | None = None,
+) -> go.Figure | None:
+    """
+    Carte de chaleur de la température intérieure : jour (x) × heure du jour (y),
+    couleur = T °C. Lit d'un coup le cycle journalier ET la dérive saisonnière
+    des ~8 760 valeurs horaires de l'année. Une carte par variante.
+
+    - Respecte la période d'analyse active et le filtre heures d'occupation.
+    - zmin/zmax : bornes de l'échelle de couleur (fixer les mêmes pour deux
+      variantes les rend directement comparables) ; auto si None.
+    Retourne None si la zone n'a pas de colonne température.
+    """
+    s = var.col_temp(zone)
+    if s.empty:
+        return None
+    n = len(s)
+    xi = pd.DatetimeIndex(np.asarray(_serie_vers_horodate(var.df_horaire))[:n])
+    y = np.asarray(s.values[:n], dtype=float)
+    if occupation_seulement:
+        occ = var.col_apports_occupants(zone)
+        if not occ.empty:
+            y = y.copy()
+            y[~(occ.values[:n] > 0)] = np.nan
+    m = var.masque_periode(n)
+    xi, y = xi[m], y[m]
+    if len(xi) == 0:
+        return None
+    d = pd.DataFrame({'date': xi.normalize(), 'hour': xi.hour, 't': y})
+    piv = d.pivot_table(index='hour', columns='date', values='t').reindex(range(24))
+    fig = go.Figure(go.Heatmap(
+        x=piv.columns, y=piv.index, z=piv.values,
+        colorscale='RdYlBu_r', zmin=zmin, zmax=zmax,
+        colorbar=dict(title='T °C'),
+        hovertemplate='%{x|%d %b} · %{y}h<br>T = %{z:.1f}°C<extra></extra>'))
+    layout = get_layout()
+    layout.update(
+        title=titre or f'Température horaire — {zone} · {var.nom} (jour × heure)',
+        xaxis=dict(title='Date', type='date'),
+        yaxis=dict(title='Heure', dtick=6, range=[-0.5, 23.5]),
+        height=360,
+    )
+    fig.update_layout(**layout)
+    return finalize_fig(fig)
+
+
 def graphique_apports_par_zone_mensuel(
     variante,
     zones: list[str],

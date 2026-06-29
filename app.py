@@ -90,11 +90,20 @@ if 'config_projet' not in st.session_state:
     else:
         st.session_state.config_projet = {}
 # Valeurs de configuration (éditées dans l'onglet Réglages, lues par les vues)
+st.session_state.setdefault('cfg_seuil_t0', 18.0)
 st.session_state.setdefault('cfg_seuil_t1', 26.0)
 st.session_state.setdefault('cfg_seuil_t2', 28.0)
 st.session_state.setdefault('cfg_methode', 'givoni')
 st.session_state.setdefault('cfg_dh_on', False)
 st.session_state.setdefault('cfg_periode', None)
+# Plages horaires jour / nuit (heure du jour 0..23 ; jour = [début, fin))
+st.session_state.setdefault('cfg_jour_debut', 7.0)
+st.session_state.setdefault('cfg_jour_fin', 22.0)
+# Module optionnel « périodes de focus »
+st.session_state.setdefault('cfg_periodes_on', False)
+st.session_state.setdefault('cfg_periodes',
+                            [{'nom': 'Été', 'm1': 5, 'm2': 10},
+                             {'nom': 'Hiver', 'm1': 11, 'm2': 4}])
 st.session_state.setdefault('cfg_nom_projet',
                             st.session_state.config_projet.get('projet', {}).get('nom', ''))
 
@@ -147,7 +156,7 @@ with st.sidebar:
     st.markdown("### 💾 Projet")
     cpa, cpb = st.columns(2)
     with cpa:
-        if st.button("Enregistrer", key="btn_save_projet", use_container_width=True):
+        if st.button("Enregistrer", key="btn_save_projet", width='stretch'):
             if not st.session_state.variantes:
                 st.warning("Aucune variante à enregistrer.")
             else:
@@ -159,11 +168,16 @@ with st.sidebar:
                     try:
                         etat = {
                             'nom_projet': st.session_state.get('cfg_nom_projet', ''),
-                            'params': {'seuil_t1': st.session_state.get('cfg_seuil_t1'),
+                            'params': {'seuil_t0': st.session_state.get('cfg_seuil_t0'),
+                                       'seuil_t1': st.session_state.get('cfg_seuil_t1'),
                                        'seuil_t2': st.session_state.get('cfg_seuil_t2'),
                                        'methode': st.session_state.get('cfg_methode'),
                                        'periode': st.session_state.get('cfg_periode'),
                                        'periode_label': st.session_state.get('cfg_periode_label'),
+                                       'jour_debut': st.session_state.get('cfg_jour_debut'),
+                                       'jour_fin': st.session_state.get('cfg_jour_fin'),
+                                       'periodes_on': st.session_state.get('cfg_periodes_on'),
+                                       'periodes': st.session_state.get('cfg_periodes'),
                                        'config': st.session_state.config_projet},
                             'variantes': st.session_state.variantes,
                             'ameliorations': st.session_state.get('ameliorations'),
@@ -177,7 +191,7 @@ with st.sidebar:
                     except Exception as e:
                         st.error(f"Erreur enregistrement : {e}")
     with cpb:
-        if st.button("Ouvrir", key="btn_open_projet", use_container_width=True):
+        if st.button("Ouvrir", key="btn_open_projet", width='stretch'):
             chemin = choisir_fichier("Ouvrir un projet STD",
                                      [("Projet STD", "*.stdproj"), ("Tous", "*.*")])
             if chemin:
@@ -187,10 +201,20 @@ with st.sidebar:
                     st.session_state.config_projet = charge['params'].get(
                         'config', st.session_state.config_projet)
                     prm = charge.get('params', {})
+                    if prm.get('seuil_t0') is not None:
+                        st.session_state['cfg_seuil_t0'] = prm['seuil_t0']
                     if prm.get('seuil_t1') is not None:
                         st.session_state['cfg_seuil_t1'] = prm['seuil_t1']
                     if prm.get('seuil_t2') is not None:
                         st.session_state['cfg_seuil_t2'] = prm['seuil_t2']
+                    if prm.get('jour_debut') is not None:
+                        st.session_state['cfg_jour_debut'] = prm['jour_debut']
+                    if prm.get('jour_fin') is not None:
+                        st.session_state['cfg_jour_fin'] = prm['jour_fin']
+                    if 'periodes_on' in prm:
+                        st.session_state['cfg_periodes_on'] = bool(prm['periodes_on'])
+                    if prm.get('periodes') is not None:
+                        st.session_state['cfg_periodes'] = prm['periodes']
                     if prm.get('methode'):
                         st.session_state['cfg_methode'] = prm['methode']
                     if 'periode' in prm:
@@ -206,8 +230,14 @@ with st.sidebar:
                         st.session_state['meteo_labels'] = charge['meteo_labels']
                     # Réinitialiser les widgets dont la base dépend des données chargées
                     for k in ('desc_base', 'recap_base', '_recap_sig', 'ed_desc', 'ed_recap',
-                              'cfg_nom_projet_w', 'cfg_seuil_t1_w', 'cfg_seuil_t2_w',
-                              'cfg_methode_label_w', 'cfg_periode_label_w'):
+                              'cfg_nom_projet_w', 'cfg_seuil_t0_w', 'cfg_seuil_t1_w',
+                              'cfg_seuil_t2_w', 'cfg_methode_label_w', 'cfg_periode_label_w',
+                              'cfg_jour_debut_w', 'cfg_jour_fin_w', 'cfg_periodes_on_w',
+                              'cfg_n_periodes'):
+                        st.session_state.pop(k, None)
+                    # Widgets de lignes de périodes (nombre variable) à réinitialiser
+                    for k in [k for k in list(st.session_state.keys())
+                              if k.startswith(('per_nom_', 'per_m1_', 'per_m2_'))]:
                         st.session_state.pop(k, None)
                     for k, v in (charge.get('selections') or {}).items():
                         st.session_state[k] = v

@@ -49,6 +49,40 @@ def _para_rouge(doc: Document, text: str, level: int = 1) -> None:
     run.font.name = 'Open Sans'
 
 
+def _table_df(doc: Document, df, index_label: str = "") -> None:
+    """Rend un DataFrame en tableau Word stylé charte (en-tête rouge, lignes zébrées).
+    L'index est rendu en 1re colonne (libellé `index_label`)."""
+    df = df.reset_index()
+    if index_label and len(df.columns):
+        df = df.rename(columns={df.columns[0]: index_label})
+    cols = [str(c) for c in df.columns]
+    table = doc.add_table(rows=1 + len(df), cols=len(cols))
+    table.style = 'Table Grid'
+    for j, col_name in enumerate(cols):
+        cell = table.rows[0].cells[j]
+        cell.text = col_name
+        _set_cell_bg(cell, (0xE3, 0x05, 0x13))
+        run = cell.paragraphs[0].runs[0]
+        run.font.color.rgb = C_BLANC
+        run.font.bold = True
+        run.font.size = Pt(8)
+        run.font.name = 'Open Sans'
+    for i, (_, row) in enumerate(df.iterrows()):
+        for j, val in enumerate(row):
+            cell = table.rows[i + 1].cells[j]
+            if isinstance(val, float) and val != val:      # NaN
+                txt = 'NA'
+            else:
+                txt = str(val)
+            cell.text = txt
+            run = cell.paragraphs[0].runs[0] if cell.paragraphs[0].runs else cell.paragraphs[0].add_run(txt)
+            run.font.size = Pt(8)
+            run.font.name = 'Open Sans'
+            if i % 2 == 1:
+                _set_cell_bg(cell, (0xF2, 0xF2, 0xF2))
+    doc.add_paragraph()
+
+
 def _fig_to_image(fig: go.Figure) -> BytesIO:
     """Exporte une figure Plotly en PNG dans un buffer."""
     buf = BytesIO()
@@ -68,13 +102,21 @@ def generer_rapport(
     methode: str = "givoni",
     df_recap=None,
     df_detail=None,
+    seuil_t0: float = 18.0,
+    jour_debut: float = 7.0,
+    jour_fin: float = 22.0,
+    periodes_on: bool = False,
+    periodes: list[dict] | None = None,
 ) -> BytesIO:
     """
     Génère le rapport Word complet selon la trame fixe:
       1. Page de couverture
-      2. Synthèse générale (tableau par variante)
-      3. Focus zones sélectionnées (Givoni + graphiques)
+      2. Synthèse générale (tableau par variante + inconfort jour/nuit)
+      3. Focus zones sélectionnées (Givoni + graphiques + humidité)
       4. Comparaison de zones
+
+    Le rapport est toujours rendu en mode clair (légendes foncées lisibles),
+    indépendamment du mode sombre éventuellement actif à l'écran.
     """
     from charts.temperature import (
         graphique_heures_depassement,
@@ -83,8 +125,16 @@ def generer_rapport(
         graphique_apports_par_zone_mensuel,
         graphique_temp_horaire,
         graphique_text_vs_text_op,
+        heatmap_temp_jour_heure,
     )
     from charts.givoni import creer_givoni
+    from charts.humidite import graphique_hr_horaire, heatmap_hr_jour_heure
+    import config.charte as _charte
+
+    # Forcer le mode clair pour l'impression (légendes/annotations foncées,
+    # fond blanc) — restauré avant de rendre la main.
+    _prev_dark = _charte.is_dark()
+    _charte.set_dark_mode(False)
 
     doc = Document()
 
@@ -180,7 +230,9 @@ def generer_rapport(
     import pandas as _pd
     rows = []
     for var in variantes:
-        rows.append({'Variante': var.nom, **var.indicateurs_batiment(config, methode)})
+        ind = var.indicateurs_batiment(config, methode, seuil_t0=seuil_t0,
+                                       seuil_t1=seuil_t1, seuil_t2=seuil_t2)
+        rows.append({'Variante': var.nom, **ind})
     df_syn = _pd.DataFrame(rows)
 
     if df_syn.empty:
@@ -215,10 +267,27 @@ def generer_rapport(
                     _set_cell_bg(cell, (0xF2, 0xF2, 0xF2))
         doc.add_paragraph()
 
+    # -- 1bis. Inconfort par plage horaire (jour / nuit) --
+    _para_rouge(doc, "Inconfort par plage horaire (jour / nuit)", level=2)
+    rows_dn = []
+    for var in variantes:
+        dn = var.inconfort_plages_horaires(config, methode, jour_debut, jour_fin)
+        rows_dn.append({'Variante': var.nom,
+                        **{k: (f"{v:.1f} %" if v == v else 'NA') for k, v in dn.items()}})
+    if rows_dn:
+        _table_df(doc, _pd.DataFrame(rows_dn).set_index('Variante'), index_label="Variante")
+    p_dn = doc.add_paragraph(
+        f"Part d'heures d'occupation hors confort, jour [{jour_debut:.0f} h, "
+        f"{jour_fin:.0f} h[ / nuit. Agrégat bâtiment pondéré par la surface utile.")
+    p_dn.runs[0].font.size = Pt(8)
+    p_dn.runs[0].font.color.rgb = C_NOIR70
+
     # -- 2. Focus zones --
     if zones_focus and variantes:
         doc.add_page_break()
         _para_rouge(doc, "2. Focus zones", level=1)
+        # Note chauffe-sous-consigne sur le Givoni : seulement si une variante est chauffée
+        note_chauffe = any(v.a_chauffage() for v in variantes)
 
         for zone in zones_focus:
             _para_rouge(doc, zone, level=2)
@@ -243,10 +312,45 @@ def generer_rapport(
                     pts['label'] = v.nom
                     series.append(pts)
             if series:
-                fig_giv = creer_givoni(series, config=config, methode=methode)
+                fig_giv = creer_givoni(series, config=config, methode=methode,
+                                       note_chauffe=note_chauffe)
                 img3 = _fig_to_image(fig_giv)
                 doc.add_picture(img3, width=Cm(17))
                 doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Diagramme(s) par période de focus (module optionnel)
+            if periodes_on and periodes:
+                for v in variantes:
+                    pts = v.points_interieurs_par_periode(zone, config, periodes, methode)
+                    if not len(pts['T']):
+                        continue
+                    pts['label'] = v.nom
+                    fig_per = creer_givoni([pts], config=config, methode=methode,
+                                           titre=f"{zone} · {v.nom} — par période",
+                                           par_periode=True, note_chauffe=note_chauffe)
+                    doc.add_picture(_fig_to_image(fig_per), width=Cm(17))
+                    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                # Récap heures + % inconfort par période, à 0 et 1 m/s
+                def _pct(x):
+                    return f"{x:.1f} %" if x == x else 'NA'
+                rows_per = []
+                for v in variantes:
+                    r0 = {r['periode']: r for r in v.inconfort_periodes(zone, config, periodes, methode, 0.0)}
+                    r1 = {r['periode']: r for r in v.inconfort_periodes(zone, config, periodes, methode, 1.0)}
+                    for p in periodes:
+                        nom = p.get('nom', '')
+                        a = r0.get(nom, {})
+                        b = r1.get(nom, {})
+                        rows_per.append({
+                            'Variante': v.nom, 'Période': nom,
+                            "Heures d'occ.": f"{a.get('heures_occ', 0):.0f}",
+                            "Inconfort 0 m/s (h)": f"{a.get('heures_inconfort', 0):.0f}",
+                            '% inconfort 0 m/s': _pct(a.get('pct', float('nan'))),
+                            "Inconfort 1 m/s (h)": f"{b.get('heures_inconfort', 0):.0f}",
+                            '% inconfort 1 m/s': _pct(b.get('pct', float('nan'))),
+                        })
+                if rows_per:
+                    _table_df(doc, _pd.DataFrame(rows_per).set_index(['Variante', 'Période']))
 
             # Apports solaires + internes
             fig_sol = graphique_apports_solaires(variantes, zone, type_apport="solaires")
@@ -255,6 +359,34 @@ def generer_rapport(
             fig_int = graphique_apports_solaires(variantes, zone, type_apport="internes")
             doc.add_picture(_fig_to_image(fig_int), width=Cm(17))
             doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Carte(s) de température jour × heure (échelle commune aux variantes)
+            tmins = [var.stats_temp(zone)['t_min'] for var in variantes]
+            tmaxs = [var.stats_temp(zone)['t_max'] for var in variantes]
+            tmins = [t for t in tmins if t == t]
+            tmaxs = [t for t in tmaxs if t == t]
+            zmin = min(tmins) if tmins else None
+            zmax = max(tmaxs) if tmaxs else None
+            for var in variantes:
+                fig_thm = heatmap_temp_jour_heure(var, zone, zmin=zmin, zmax=zmax)
+                if fig_thm is not None:
+                    doc.add_picture(_fig_to_image(fig_thm), width=Cm(17))
+                    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Humidité relative : moyenne journalière (comparaison) + cartes jour×heure
+            if any(not v.col_hr(zone).empty for v in variantes):
+                seuils_cfg = config.get('seuils', {}) if isinstance(config, dict) else {}
+                hr_min = float(seuils_cfg.get('hr_confort_min', 40.0))
+                hr_max = float(seuils_cfg.get('hr_confort_max', 70.0))
+                fig_hr = graphique_hr_horaire(variantes, zone, hr_min=hr_min, hr_max=hr_max,
+                                              agregation="journalier")
+                doc.add_picture(_fig_to_image(fig_hr), width=Cm(17))
+                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for var in variantes:
+                    fig_hhm = heatmap_hr_jour_heure(var, zone)
+                    if fig_hhm is not None:
+                        doc.add_picture(_fig_to_image(fig_hhm), width=Cm(17))
+                        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             doc.add_page_break()
 
@@ -274,6 +406,9 @@ def generer_rapport(
         fig_sol = graphique_apports_par_zone_mensuel(var, zones_comparaison, type_apport="solaires")
         doc.add_picture(_fig_to_image(fig_sol), width=Cm(17))
         doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # Restaurer le mode d'affichage initial (le rapport est rendu en clair)
+    _charte.set_dark_mode(_prev_dark)
 
     # Sauvegarder dans un buffer
     buf = BytesIO()
