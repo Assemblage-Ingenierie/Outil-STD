@@ -8,3 +8,8 @@ font = "sans serif"
 [server]
 headless = false
 port = 8501
+
+[client]
+# "minimal" masque le bouton « Deploy » et le menu développeur (⋮) :
+# outil local/offline, aucun déploiement cloud.
+toolbarMode = "minimal"

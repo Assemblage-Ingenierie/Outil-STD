@@ -88,7 +88,7 @@ def render_description_variantes(variantes: list):
     if ams:
         edited_recap = st.data_editor(
             ss["recap_base"], column_config=col_cfg, num_rows="fixed",
-            hide_index=True, use_container_width=True, key="ed_recap",
+            hide_index=True, width='stretch', key="ed_recap",
         )
         # Mémoriser l'état des cases (par nom d'amélioration)
         vals = {}
@@ -119,7 +119,7 @@ def render_description_variantes(variantes: list):
                                                         width="medium"),
             "Descriptif": st.column_config.TextColumn("Descriptif", width="large"),
         },
-        num_rows="dynamic", hide_index=True, use_container_width=True, key="ed_desc",
+        num_rows="dynamic", hide_index=True, width='stretch', key="ed_desc",
     )
     ss["ameliorations"] = edited_desc
 

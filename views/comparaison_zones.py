@@ -80,7 +80,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
         df_comp.style.format(cols_pct, na_rep='NA', decimal=_dec, thousands=' ', precision=1)
                      .background_gradient(subset=cols_couleur, cmap='YlOrRd')
                      .apply(_style_na, subset=cols_pct_list),
-        use_container_width=True,
+        width='stretch',
         height=min(600, 60 + 35 * len(df_comp)),
     )
     st.caption("« % hors » = part des heures d'occupation hors zone de confort. "
@@ -96,17 +96,17 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
     # -- Températures min/moy/max en barres --
     st.subheader("Températures min / moyenne / max par zone")
     fig_t = graphique_temp_min_moy_max([var], zones_sel)
-    st.plotly_chart(fig_t, use_container_width=True)
+    st.plotly_chart(fig_t, width='stretch')
 
     # -- Humidité relative min/moy/max en barres --
     st.subheader("Humidité relative min / moyenne / max par zone")
     fig_hr = graphique_hr_min_moy_max([var], zones_sel)
-    st.plotly_chart(fig_hr, use_container_width=True)
+    st.plotly_chart(fig_hr, width='stretch')
 
     # -- Heures de dépassement --
     st.subheader("Heures de dépassement")
     fig_dep = graphique_heures_depassement([var], zones_sel, seuil_t1, seuil_t2)
-    st.plotly_chart(fig_dep, use_container_width=True)
+    st.plotly_chart(fig_dep, width='stretch')
 
     # -- Besoins annuels --
     st.subheader("Besoins annuels par zone")
@@ -123,14 +123,14 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
                       yaxis=dict(title='kWh/m²'), barmode='group', height=400,
                       uniformtext=dict(minsize=8, mode='hide'))
         fig_bes.update_layout(**layout)
-        st.plotly_chart(finalize_fig(fig_bes), use_container_width=True)
+        st.plotly_chart(finalize_fig(fig_bes), width='stretch')
 
     # -- Apports solaires mensuels : une barre par mois par zone --
     st.subheader("Apports solaires mensuels par zone")
     fig_sol = graphique_apports_par_zone_mensuel(var, zones_sel, type_apport="solaires")
-    st.plotly_chart(fig_sol, use_container_width=True)
+    st.plotly_chart(fig_sol, width='stretch')
 
     # -- Apports internes mensuels : une barre par mois par zone --
     st.subheader("Apports internes mensuels par zone (éclairage + occupants + équipements)")
     fig_int = graphique_apports_par_zone_mensuel(var, zones_sel, type_apport="internes")
-    st.plotly_chart(fig_int, use_container_width=True)
+    st.plotly_chart(fig_int, width='stretch')
