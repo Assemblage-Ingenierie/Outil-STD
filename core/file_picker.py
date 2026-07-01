@@ -23,12 +23,20 @@ def choisir_fichier(titre: str = "Sélectionner un fichier",
     root.withdraw()
     root.wm_attributes('-topmost', 1)  # boîte de dialogue au premier plan
 
-    chemin = filedialog.askopenfilename(
-        title=titre,
-        filetypes=filetypes,
-        initialdir=dossier_initial,
-    )
-    root.destroy()
+    # parent=root est ESSENTIEL : Streamlit exécute chaque rerun dans un thread
+    # différent. Sans parent, tkinter retombe sur son _default_root global qui
+    # peut pointer sur un Tk créé dans un autre thread -> « main thread is not in
+    # main loop ». En liant la boîte à notre root (créé sur CE thread), l'appel
+    # Tcl s'exécute sur le thread créateur et l'erreur disparaît.
+    try:
+        chemin = filedialog.askopenfilename(
+            parent=root,
+            title=titre,
+            filetypes=filetypes,
+            initialdir=dossier_initial,
+        )
+    finally:
+        root.destroy()
 
     return chemin if chemin else None
 
@@ -51,12 +59,17 @@ def enregistrer_fichier(titre: str = "Enregistrer sous",
     root.withdraw()
     root.wm_attributes('-topmost', 1)
 
-    chemin = filedialog.asksaveasfilename(
-        title=titre,
-        filetypes=filetypes,
-        defaultextension=extension_defaut,
-        initialfile=nom_defaut,
-    )
-    root.destroy()
+    # parent=root : voir la note dans choisir_fichier (évite le _default_root
+    # global partagé entre threads ScriptRunner -> « main thread is not in main loop »).
+    try:
+        chemin = filedialog.asksaveasfilename(
+            parent=root,
+            title=titre,
+            filetypes=filetypes,
+            defaultextension=extension_defaut,
+            initialfile=nom_defaut,
+        )
+    finally:
+        root.destroy()
 
     return chemin if chemin else None
