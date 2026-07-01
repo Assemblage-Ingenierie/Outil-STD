@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+*.log
 
 # Données de simulation (fichiers projet, ne pas versionner)
 *.slk

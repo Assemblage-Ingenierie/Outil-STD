@@ -175,3 +175,19 @@ def test_creer_givoni_par_periode_smoke(tmp_path):
     noms = {tr.name for tr in fig.data}
     # les deux périodes apparaissent comme traces de points distinctes
     assert {'P1', 'P2'} <= noms
+
+
+# ----------------------------------------------------------------------
+# Export Word : robustesse au nom de projet vide (régression)
+# ----------------------------------------------------------------------
+def test_rapport_word_nom_projet_vide(tmp_path):
+    """Un nom de projet vide ne doit pas planter la génération du rapport.
+    Auparavant : add_paragraph('') ne créait aucun run → runs[0] levait
+    « list index out of range »."""
+    from export.word_report import generer_rapport
+    v = _variante(tmp_path, ["A"], n_rows=24)
+    for nom in ("", "Mon Projet"):
+        buf = generer_rapport(variantes=[v], config={}, seuil_t1=26.0, seuil_t2=28.0,
+                              zones_focus=[], zones_comparaison=[], nom_projet=nom,
+                              methode="givoni")
+        assert buf.getvalue()   # buffer non vide

@@ -159,9 +159,10 @@ def generer_rapport(
     run_titre.font.name = 'Open Sans'
     run_titre.font.color.rgb = C_VIOLET
 
-    sous_titre = doc.add_paragraph(nom_projet)
-    sous_titre.runs[0].font.size = Pt(16)
-    sous_titre.runs[0].font.color.rgb = C_ROUGE
+    sous_titre = doc.add_paragraph()
+    run_st = sous_titre.add_run(nom_projet or "")   # add_run crée toujours le run, même si le nom est vide
+    run_st.font.size = Pt(16)
+    run_st.font.color.rgb = C_ROUGE
 
     doc.add_page_break()
 
