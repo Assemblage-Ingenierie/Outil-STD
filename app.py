@@ -1,5 +1,5 @@
 """
-Outil STD — Assemblage ingénierie
+Assemblage STD — Assemblage ingénierie
 Application Streamlit d'analyse des données de simulation thermique dynamique Pléiades.
 """
 import streamlit as st
@@ -8,7 +8,7 @@ from pathlib import Path
 
 # -- Config page (doit être le premier appel Streamlit) --
 st.set_page_config(
-    page_title="Outil STD — Assemblage ingénierie",
+    page_title="Assemblage STD — Assemblage ingénierie",
     page_icon="🌡️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -125,7 +125,7 @@ with st.sidebar:
     else:
         st.markdown("## Assemblage ingénierie")
 
-    st.markdown("### 🏗️ Outil STD")
+    st.markdown("### 🏗️ Assemblage STD")
     st.caption("Réglages, ajout de variantes et export : onglet **Réglages**.")
     st.markdown("---")
 
@@ -217,6 +217,11 @@ with st.sidebar:
                         st.session_state['cfg_periodes'] = prm['periodes']
                     if prm.get('methode'):
                         st.session_state['cfg_methode'] = prm['methode']
+                        # Restaurer AUSSI le libellé du radio (sinon, au 1er rendu
+                        # de Réglages, le radio resté sur « Givoni » réécrase
+                        # cfg_methode → COCO perdu + incohérence au switch).
+                        st.session_state['cfg_methode_label'] = (
+                            "COCO (tropical)" if prm['methode'] == 'coco' else "Givoni")
                     if 'periode' in prm:
                         st.session_state['cfg_periode'] = prm['periode']
                     if prm.get('periode_label'):

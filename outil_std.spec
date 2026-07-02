@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-Spec PyInstaller pour Outil STD — Assemblage ingénierie.
+Spec PyInstaller pour Assemblage STD — Assemblage ingénierie.
 Build : lancer build.bat
 """
 from PyInstaller.utils.hooks import collect_all, collect_data_files
@@ -87,7 +87,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="Outil STD",
+    name="Assemblage STD",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -108,5 +108,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="Outil STD",
+    name="Assemblage STD",
 )

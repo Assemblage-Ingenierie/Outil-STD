@@ -1,4 +1,4 @@
-"""Version de l'Outil STD.
+"""Version de l'Assemblage STD.
 
 Point unique de vérité pour le numéro de version et la date de dernière mise
 à jour. À incrémenter À CHAQUE build destiné aux utilisateurs (cf. build.bat) :
@@ -12,7 +12,7 @@ Affiché dans l'onglet Réglages (pied de page).
 """
 from __future__ import annotations
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 DATE_MAJ = "2026-07-02"
 
 

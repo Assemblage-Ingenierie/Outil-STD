@@ -216,7 +216,7 @@ def render_reglages():
 def _pied_version():
     from config.version import version_affichee, DATE_MAJ
     st.divider()
-    st.caption(f"Outil STD · {version_affichee()} · dernière mise à jour : {DATE_MAJ}")
+    st.caption(f"Assemblage STD · {version_affichee()} · dernière mise à jour : {DATE_MAJ}")
 
 
 # ----------------------------------------------------------------------
@@ -386,6 +386,7 @@ def _section_export():
                     jour_fin=ss.get('cfg_jour_fin', 22.0),
                     periodes_on=ss.get('cfg_periodes_on', False),
                     periodes=ss.get('cfg_periodes', []),
+                    format_fr=ss.get('cfg_format_fr', True),
                 )
                 st.download_button(
                     "⬇️ Télécharger le rapport", data=buf,

@@ -13,6 +13,13 @@ from __future__ import annotations
 import streamlit as st
 
 
+def show_plotly(fig, **kwargs):
+    """st.plotly_chart avec la config charte : snapshot 📷 nommé d'après le titre
+    du graphique, logo Plotly masqué. Passe le reste des kwargs (width, key…)."""
+    import config.charte as charte
+    st.plotly_chart(fig, config=charte.plotly_config(fig), **kwargs)
+
+
 def persist_multiselect(label, options, store_key, defaut=None,
                         auto_new=False, **kwargs):
     """

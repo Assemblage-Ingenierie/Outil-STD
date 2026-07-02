@@ -114,6 +114,16 @@ def creer_givoni(
             line=dict(color=couleur, width=1.0),
             name=label, hoverinfo="skip", opacity=0.7,
         ))
+        # Étiquette de vitesse d'air directement sur le graphe, au sommet droit
+        # de la zone (couleur de la zone) — repère visuel demandé en plus de la légende.
+        if len(T_z):
+            i_bord = int(np.argmax(T_z))
+            v_txt = f"{v:.0f} m/s" if float(v).is_integer() else f"{v:.1f} m/s".replace('.', ',')
+            fig.add_annotation(
+                x=float(T_z[i_bord]), y=float(W_z[i_bord]), text=v_txt,
+                showarrow=False, xanchor="left", yanchor="middle", xshift=5,
+                font=dict(size=10, color=couleur, family=FONT_FAMILY),
+            )
 
     # ------------------------------------------------------------------
     # 3. Points horaires intérieurs

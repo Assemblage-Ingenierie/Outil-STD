@@ -1,4 +1,4 @@
-# Outil STD
+# Assemblage STD
 
 Outil métier d'analyse des sorties de **simulation thermique dynamique (STD) Pléiades**, pour l'équipe environnement d'Assemblage ingénierie. Application Streamlit, 100 % hors-ligne, packagée en exécutable Windows.
 
@@ -34,9 +34,9 @@ build.bat
 ```
 
 Enchaîne l'installation des dépendances puis PyInstaller (`outil_std.spec`, `--onedir`, ~3 min).
-Sortie : **`dist/Outil STD/Outil STD.exe`**.
+Sortie : **`dist/Assemblage STD/Assemblage STD.exe`**.
 
-> **Distribution** : envoyer le **dossier complet** `dist/Outil STD/` zippé, à extraire entièrement.
+> **Distribution** : envoyer le **dossier complet** `dist/Assemblage STD/` zippé, à extraire entièrement.
 > L'exe seul ne fonctionne pas (il a besoin de `_internal/`).
 
 ## Tests

@@ -2,7 +2,7 @@
 setlocal
 
 echo ============================================
-echo   Outil STD - Build PyInstaller
+echo   Assemblage STD - Build PyInstaller
 echo   Assemblage ingenierie
 echo ============================================
 echo.
@@ -42,8 +42,8 @@ if %errorlevel% neq 0 (
 )
 
 echo [3/4] Nettoyage des anciens builds...
-if exist "dist\Outil STD" rmdir /s /q "dist\Outil STD"
-if exist "build\Outil STD" rmdir /s /q "build\Outil STD"
+if exist "dist\Assemblage STD" rmdir /s /q "dist\Assemblage STD"
+if exist "build\Assemblage STD" rmdir /s /q "build\Assemblage STD"
 
 echo [4/4] Build PyInstaller (--onedir)...
 %PYTHON% -m PyInstaller outil_std.spec --noconfirm
@@ -57,7 +57,7 @@ if %errorlevel% neq 0 (
 echo.
 echo ============================================
 echo   Build termine avec succes !
-echo   Executable : dist\Outil STD\Outil STD.exe
+echo   Executable : dist\Assemblage STD\Assemblage STD.exe
 echo.
 echo   NOTE : A la premiere utilisation de l'export Word,
 echo   kaleido telecharge automatiquement Chrome (~150 Mo).

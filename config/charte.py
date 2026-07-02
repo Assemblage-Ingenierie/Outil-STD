@@ -136,3 +136,34 @@ def finalize_fig(fig):
             title_font_color=VIOLET,
         )
     return fig
+
+
+def _nom_fichier_depuis_titre(titre: str) -> str:
+    """Transforme un titre de graphique en nom de fichier propre (sans extension)."""
+    import re
+    if not titre:
+        return "graphique"
+    # Retire les caractères interdits sous Windows, condense les espaces.
+    nom = re.sub(r'[\\/:*?"<>|]+', ' ', str(titre))
+    nom = re.sub(r'\s+', ' ', nom).strip()
+    return nom or "graphique"
+
+
+def plotly_config(fig, scale: int = 2) -> dict:
+    """
+    Config Plotly pour st.plotly_chart : le bouton 📷 (snapshot PNG) nomme le
+    fichier d'après le TITRE du graphique (au lieu de « newplot »), en meilleure
+    résolution. Masque aussi le logo Plotly de la barre d'outils.
+    """
+    try:
+        titre = fig.layout.title.text or ""
+    except Exception:
+        titre = ""
+    return {
+        "displaylogo": False,
+        "toImageButtonOptions": {
+            "format": "png",
+            "filename": _nom_fichier_depuis_titre(titre),
+            "scale": scale,
+        },
+    }

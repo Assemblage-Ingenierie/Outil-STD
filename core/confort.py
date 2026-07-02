@@ -126,7 +126,7 @@ def zones_modele(config: dict, methode: str):
         for v, label, sommets in COCO_ZONES:
             T = np.array([p[0] for p in sommets] + [sommets[0][0]], dtype=float)
             W = np.array([p[1] for p in sommets] + [sommets[0][1]], dtype=float)
-            out.append((v, label, T, W))
+            out.append((v, f"{label} ({v:.0f} m/s)", T, W))
     else:  # givoni
         for v, t_min, t_max, hr_min, hr_max, t_top, hr_corner in _givoni_zones_params(config):
             T, W = _polygone_givoni(t_min, t_max, hr_min, hr_max, t_top, hr_corner)
@@ -165,10 +165,10 @@ def dans_zone(T, w, config: dict, methode: str, vitesse: float):
 
 
 def label_zone(v: float) -> str:
-    """Libellé court d'une zone Givoni."""
+    """Libellé court d'une zone Givoni (vitesse au format FR : virgule décimale)."""
     if v == 0:
         return "Confort 0 m/s (repos)"
-    return f"Confort {v:.1f} m/s"
+    return f"Confort {v:.1f} m/s".replace('.', ',')
 
 
 def vitesses_modele(methode: str) -> list[float]:

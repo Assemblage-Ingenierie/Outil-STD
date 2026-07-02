@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from views.widgets import persist_multiselect
+from views.widgets import persist_multiselect, show_plotly
 
 
 def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
@@ -126,7 +126,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins froid (kWh/m²)"],
                            name="Climatisation", marker_color=BLEU, **bar_labels()))
     fig_b.update_layout(**_layout("Besoins par variante (kWh/m²)", "kWh/m²"))
-    st.plotly_chart(finalize_fig(fig_b), width='stretch')
+    show_plotly(finalize_fig(fig_b), width='stretch')
 
     # Températures min / moy / max
     st.subheader("Températures du bâtiment")
@@ -138,7 +138,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     fig_t.add_trace(go.Bar(x=noms_var, y=df["T max (°C)"], name="T max",
                            marker=dict(color=ROUGE, opacity=0.85), **bar_labels()))
     fig_t.update_layout(**_layout("Températures par variante (°C)", "°C"))
-    st.plotly_chart(finalize_fig(fig_t), width='stretch')
+    show_plotly(finalize_fig(fig_t), width='stretch')
 
     # Humidité relative min / moy / max
     st.subheader("Humidité relative du bâtiment")
@@ -152,7 +152,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     fig_hr.update_layout(**_layout("Humidité relative par variante (%)", "HR (%)"))
     # Dégagement au-dessus de 100 % pour ne pas couper l'étiquette « outside » du max
     fig_hr.update_layout(yaxis_range=[0, 112])
-    st.plotly_chart(finalize_fig(fig_hr), width='stretch')
+    show_plotly(finalize_fig(fig_hr), width='stretch')
 
     # % hors confort 0 / 1 m/s
     st.subheader("Part d'inconfort (heures d'occupation)")
@@ -161,7 +161,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
         fig_c.add_trace(go.Bar(x=noms_var, y=df[col], name=col,
                                marker=dict(color=ROUGE, opacity=op), **bar_labels(".1f")))
     fig_c.update_layout(**_layout("Part d'inconfort par variante (%)", "% des heures d'occupation"))
-    st.plotly_chart(finalize_fig(fig_c), width='stretch')
+    show_plotly(finalize_fig(fig_c), width='stretch')
 
     # Inconfort jour / nuit par variante
     st.subheader("Inconfort jour / nuit")
@@ -181,4 +181,4 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
                                         **bar_labels(".1f")))
     fig_dn_bar.update_layout(**_layout("Inconfort jour / nuit par variante (%)",
                                        "% des heures d'occupation"))
-    st.plotly_chart(finalize_fig(fig_dn_bar), width='stretch')
+    show_plotly(finalize_fig(fig_dn_bar), width='stretch')

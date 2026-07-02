@@ -2,7 +2,7 @@
 setlocal
 
 echo ============================================
-echo   Installation de l'Outil STD
+echo   Installation d'Assemblage STD
 echo   Assemblage ingenierie
 echo ============================================
 echo.

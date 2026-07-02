@@ -107,6 +107,7 @@ def generer_rapport(
     jour_fin: float = 22.0,
     periodes_on: bool = False,
     periodes: list[dict] | None = None,
+    format_fr: bool = True,
 ) -> BytesIO:
     """
     Génère le rapport Word complet selon la trame fixe:
@@ -135,6 +136,20 @@ def generer_rapport(
     # fond blanc) — restauré avant de rendre la main.
     _prev_dark = _charte.is_dark()
     _charte.set_dark_mode(False)
+
+    # Séparateur décimal : virgule (défaut FR, compatible séparateur système) ou point.
+    _dec = ',' if format_fr else '.'
+
+    def _num(val) -> str:
+        """Nombre → texte avec le séparateur décimal choisi (virgule par défaut)."""
+        return str(val).replace('.', _dec) if _dec != '.' else str(val)
+
+    def _pct(val, n=1) -> str:
+        """Pourcentage formaté avec le séparateur décimal choisi, ou 'NA' si NaN."""
+        if val != val:
+            return 'NA'
+        s = f"{val:.{n}f} %"
+        return s.replace('.', _dec) if _dec != '.' else s
 
     doc = Document()
 
@@ -257,7 +272,9 @@ def generer_rapport(
                 if isinstance(val, float) and val != val:          # NaN
                     txt = 'NA'
                 elif col_name.startswith('% hors') and isinstance(val, (int, float)):
-                    txt = f"{val:.1f} %"
+                    txt = _pct(val)
+                elif isinstance(val, (int, float)):
+                    txt = _num(val)
                 else:
                     txt = str(val)
                 cell.text = txt
@@ -274,7 +291,7 @@ def generer_rapport(
     for var in variantes:
         dn = var.inconfort_plages_horaires(config, methode, jour_debut, jour_fin)
         rows_dn.append({'Variante': var.nom,
-                        **{k: (f"{v:.1f} %" if v == v else 'NA') for k, v in dn.items()}})
+                        **{k: _pct(v) for k, v in dn.items()}})
     if rows_dn:
         _table_df(doc, _pd.DataFrame(rows_dn).set_index('Variante'), index_label="Variante")
     p_dn = doc.add_paragraph(
@@ -332,8 +349,6 @@ def generer_rapport(
                     doc.add_picture(_fig_to_image(fig_per), width=Cm(17))
                     doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 # Récap heures + % inconfort par période, à 0 et 1 m/s
-                def _pct(x):
-                    return f"{x:.1f} %" if x == x else 'NA'
                 rows_per = []
                 for v in variantes:
                     r0 = {r['periode']: r for r in v.inconfort_periodes(zone, config, periodes, methode, 0.0)}

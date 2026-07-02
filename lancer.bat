@@ -2,7 +2,7 @@
 setlocal
 
 echo ============================================
-echo   Outil STD - Assemblage ingenierie
+echo   Assemblage STD - Assemblage ingenierie
 echo ============================================
 echo.
 echo Demarrage en cours...

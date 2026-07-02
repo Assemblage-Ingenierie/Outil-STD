@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from views.widgets import persist_multiselect, persist_selectbox
+from views.widgets import persist_multiselect, persist_selectbox, show_plotly
 
 
 @st.fragment
@@ -36,12 +36,12 @@ def _section_humidite(variantes_sel, zone, config):
     st.markdown("**Moyenne journalière**")
     fig_hr_j = graphique_hr_horaire(variantes_sel, zone, hr_min=hr_min, hr_max=hr_max,
                                     occupation_seulement=hr_occ_only, agregation="journalier")
-    st.plotly_chart(fig_hr_j, width='stretch', key="hr_journalier")
+    show_plotly(fig_hr_j, width='stretch', key="hr_journalier")
 
     st.markdown("**Horaire (zoomable)**")
     fig_hr_h = graphique_hr_horaire(variantes_sel, zone, hr_min=hr_min, hr_max=hr_max,
                                     occupation_seulement=hr_occ_only, agregation="horaire")
-    st.plotly_chart(fig_hr_h, width='stretch', key="hr_horaire")
+    show_plotly(fig_hr_h, width='stretch', key="hr_horaire")
 
     st.markdown("**Carte jour × heure**")
     st.caption("Couleur = HR % (échelle fixe 20–100, variantes comparables). "
@@ -49,7 +49,7 @@ def _section_humidite(variantes_sel, zone, config):
     for i, var in enumerate(variantes_sel):
         fig_hm = heatmap_hr_jour_heure(var, zone, occupation_seulement=hr_occ_only)
         if fig_hm is not None:
-            st.plotly_chart(fig_hm, width='stretch', key=f"hr_hm_{i}")
+            show_plotly(fig_hm, width='stretch', key=f"hr_hm_{i}")
 
 
 def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
@@ -154,7 +154,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     with tab_t:
         st.subheader("Évolution horaire de la température")
         fig_temp = graphique_temp_horaire(variantes_sel, zone, seuil_t1, seuil_t2)
-        st.plotly_chart(fig_temp, width='stretch')
+        show_plotly(fig_temp, width='stretch')
 
         st.subheader("Carte de température (jour × heure)")
         st.caption("Couleur = température intérieure (°C). Échelle commune aux variantes "
@@ -167,17 +167,17 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
         for i, var in enumerate(variantes_sel):
             fig_thm = heatmap_temp_jour_heure(var, zone, zmin=_zmin, zmax=_zmax)
             if fig_thm is not None:
-                st.plotly_chart(fig_thm, width='stretch', key=f"temp_hm_{i}")
+                show_plotly(fig_thm, width='stretch', key=f"temp_hm_{i}")
 
         st.subheader("Température opérative vs Température extérieure")
         fig_op = graphique_text_vs_text_op(variantes_sel, zone, par_saison=par_saison)
-        st.plotly_chart(fig_op, width='stretch')
+        show_plotly(fig_op, width='stretch')
         if len(variantes_sel) == 1 and par_saison:
             st.caption("Coloration par saison. Sélectionnez plusieurs variantes pour les comparer.")
 
         if meteos_differentes:
             st.subheader("Comparaison des fichiers météo")
-            st.plotly_chart(graphique_meteo_comparaison(variantes_sel), width='stretch')
+            show_plotly(graphique_meteo_comparaison(variantes_sel), width='stretch')
 
     # ===================== Onglet Confort bioclimatique =====================
     with tab_conf:
@@ -201,7 +201,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
                 fig_all = creer_givoni(series, config=config, methode=methode,
                                        titre=f"Diagramme de {nom_modele} — {zone} (toutes variantes)",
                                        par_saison=par_saison, note_chauffe=note_chauffe)
-                st.plotly_chart(fig_all, width='stretch', key="giv_all")
+                show_plotly(fig_all, width='stretch', key="giv_all")
 
             # 2) Un diagramme par variante (coloration par saison si activée)
             st.markdown("**Par variante**" if len(series) > 1 else "")
@@ -209,7 +209,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
                 fig_one = creer_givoni([s], config=config, methode=methode,
                                        titre=f"Diagramme de {nom_modele} — {zone} · {s['label']}",
                                        par_saison=par_saison, note_chauffe=note_chauffe)
-                st.plotly_chart(fig_one, width='stretch', key=f"giv_{s['label']}")
+                show_plotly(fig_one, width='stretch', key=f"giv_{s['label']}")
 
         # Périodes de focus (module optionnel) : Givoni par période + récap
         if st.session_state.get('cfg_periodes_on'):
@@ -228,7 +228,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
                                            titre=f"Diagramme de {nom_modele} — {zone} · "
                                                  f"{v.nom} (par période)",
                                            par_periode=True, note_chauffe=note_chauffe)
-                    st.plotly_chart(fig_per, width='stretch', key=f"giv_per_{v.nom}")
+                    show_plotly(fig_per, width='stretch', key=f"giv_per_{v.nom}")
 
                 st.markdown("**Récapitulatif par période** (vitesses d'air 0 et 1 m/s)")
                 rows_per = []
@@ -269,8 +269,8 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     with tab_app:
         st.subheader("Apports solaires mensuels")
         fig_sol = graphique_apports_solaires(variantes_sel, zone, type_apport="solaires")
-        st.plotly_chart(fig_sol, width='stretch')
+        show_plotly(fig_sol, width='stretch')
 
         st.subheader("Apports internes mensuels (éclairage + occupants + équipements)")
         fig_int = graphique_apports_solaires(variantes_sel, zone, type_apport="internes")
-        st.plotly_chart(fig_int, width='stretch')
+        show_plotly(fig_int, width='stretch')

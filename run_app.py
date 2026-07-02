@@ -1,5 +1,5 @@
 """
-Bootstrap PyInstaller pour l'Outil STD.
+Bootstrap PyInstaller pour Assemblage STD.
 
 Deux modes dans le MÊME exécutable :
   • LANCEUR (défaut) : ouvre l'appli dans une FENÊTRE NATIVE (pywebview) plutôt
@@ -121,7 +121,7 @@ def _serveur_inproc_et_navigateur():
         code = 1
     if code:
         try:
-            input("\n[Outil STD] Une erreur est survenue ci-dessus. "
+            input("\n[Assemblage STD] Une erreur est survenue ci-dessus. "
                   "Appuyez sur Entrée pour fermer cette fenêtre...")
         except Exception:
             pass
@@ -156,7 +156,7 @@ def _lancer_fenetre_native() -> bool:
     try:
         import webview  # noqa: F401
     except Exception as e:
-        print(f"[Outil STD] pywebview indisponible ({e}) — bascule navigateur.")
+        print(f"[Assemblage STD] pywebview indisponible ({e}) — bascule navigateur.")
         return False
 
     import subprocess
@@ -176,12 +176,12 @@ def _lancer_fenetre_native() -> bool:
         serveur = subprocess.Popen(cmd, env=env, stdout=srv_out, stderr=srv_out,
                                    creationflags=creationflags)
     except Exception as e:
-        print(f"[Outil STD] Échec du lancement du serveur ({e}) — bascule navigateur.")
+        print(f"[Assemblage STD] Échec du lancement du serveur ({e}) — bascule navigateur.")
         return False
 
     try:
         if not _attendre_sante():
-            print("[Outil STD] Le serveur n'a pas démarré à temps — bascule navigateur.")
+            print("[Assemblage STD] Le serveur n'a pas démarré à temps — bascule navigateur.")
             serveur.terminate()
             return False
         try:
@@ -191,13 +191,13 @@ def _lancer_fenetre_native() -> bool:
             # téléchargement du rapport Word ne produisent rien dans la fenêtre
             # native. Activé → WebView2 ouvre une boîte « Enregistrer sous ».
             webview.settings['ALLOW_DOWNLOADS'] = True
-            webview.create_window("Outil STD — Assemblage ingénierie", URL,
+            webview.create_window("Assemblage STD — Assemblage ingénierie", URL,
                                   width=1400, height=900)
             webview.start()        # bloque jusqu'à fermeture de la fenêtre
         except Exception as e:
             # Fenêtre native KO malgré pywebview importé : ouvrir le navigateur
             # et garder le serveur vivant tant que l'utilisateur s'en sert.
-            print(f"[Outil STD] Fenêtre native indisponible ({e}) — ouverture navigateur.")
+            print(f"[Assemblage STD] Fenêtre native indisponible ({e}) — ouverture navigateur.")
             import webbrowser
             webbrowser.open(URL)
             serveur.wait()
