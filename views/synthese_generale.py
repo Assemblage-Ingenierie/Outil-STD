@@ -55,25 +55,9 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
         return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
                 if v != v else '' for v in col]
 
-    # ==================================================================
-    # Environnement graphiques (barres bâtiment, comparaison des variantes)
-    # ==================================================================
-    import plotly.graph_objects as go
-    from config.charte import ROUGE, get_layout, grille_color, finalize_fig, bar_labels
-
-    BLEU = "#2196F3"
-    TEAL = "#00897B"
-    ORANGE = "#FF9800"
-    INDIGO = "#3F51B5"
+    # Graphiques barres bâtiment : source unique partagée avec le rapport Word.
+    from charts import synthese as gsyn
     noms_var = list(df.index)
-
-    def _layout(titre, ytitre):
-        lay = get_layout()
-        lay.update(title=titre, xaxis=dict(title="Variante", tickangle=-15),
-                   yaxis=dict(title=ytitre, gridcolor=grille_color()),
-                   barmode="group", height=380,
-                   uniformtext=dict(minsize=8, mode='hide'))
-        return lay
 
     # ==================================================================
     # Onglets thématiques (comme la vue Focus zone)
@@ -115,41 +99,18 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     # ----------------------------- Besoins -----------------------------
     with tab_bes:
         st.subheader("Besoins de chauffage et de climatisation")
-        fig_b = go.Figure()
-        fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins chaud (kWh/m²)"],
-                               name="Chauffage", marker_color=ROUGE, **bar_labels()))
-        fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins froid (kWh/m²)"],
-                               name="Climatisation", marker_color=BLEU, **bar_labels()))
-        fig_b.update_layout(**_layout("Besoins par variante (kWh/m²)", "kWh/m²"))
-        show_plotly(finalize_fig(fig_b), width='stretch')
+        show_plotly(gsyn.graphique_besoins(df, noms_var), width='stretch')
 
     # --------------------------- Températures --------------------------
     with tab_temp:
         st.subheader("Températures du bâtiment")
-        fig_t = go.Figure()
-        fig_t.add_trace(go.Bar(x=noms_var, y=df["T min (°C)"], name="T min",
-                               marker=dict(color=BLEU, opacity=0.6), **bar_labels()))
-        fig_t.add_trace(go.Bar(x=noms_var, y=df["T moy (°C)"], name="T moy",
-                               marker_color="#9E9E9E", **bar_labels()))
-        fig_t.add_trace(go.Bar(x=noms_var, y=df["T max (°C)"], name="T max",
-                               marker=dict(color=ROUGE, opacity=0.85), **bar_labels()))
-        fig_t.update_layout(**_layout("Températures par variante (°C)", "°C"))
-        show_plotly(finalize_fig(fig_t), width='stretch')
+        show_plotly(gsyn.graphique_temperatures(df, noms_var), width='stretch')
 
         # Heures de dépassement des seuils de température (H<T0 / H>T1 / H>T2)
         st.subheader("Heures de dépassement des seuils de température")
-        cols_h = [c for c in cols_heures if c in df.columns]
-        if cols_h:
-            couleurs_h = {f'H < {seuil_t0:.0f}°C': BLEU,
-                          f'H > {seuil_t1:.0f}°C': ORANGE,
-                          f'H > {seuil_t2:.0f}°C': ROUGE}
-            fig_h = go.Figure()
-            for c in cols_h:
-                fig_h.add_trace(go.Bar(x=noms_var, y=df[c], name=c,
-                                       marker_color=couleurs_h.get(c, "#9E9E9E"),
-                                       **bar_labels(".0f")))
-            fig_h.update_layout(**_layout("Heures de dépassement par variante", "heures (moy. par zone)"))
-            show_plotly(finalize_fig(fig_h), width='stretch')
+        fig_h = gsyn.graphique_heures_depassement(df, noms_var, seuil_t0, seuil_t1, seuil_t2)
+        if fig_h is not None:
+            show_plotly(fig_h, width='stretch')
             st.caption("Heures moyennes par zone, pondérées par la surface utile : sous "
                        f"{seuil_t0:.0f}°C (froid), au-dessus de {seuil_t1:.0f}°C et {seuil_t2:.0f}°C "
                        "(surchauffe). Seuils réglables dans l'onglet Réglages.")
@@ -159,17 +120,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     # ---------------------------- Humidité -----------------------------
     with tab_hum:
         st.subheader("Humidité relative du bâtiment")
-        fig_hr = go.Figure()
-        fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR min (%)"], name="HR min",
-                                marker=dict(color=BLEU, opacity=0.45), **bar_labels(".0f")))
-        fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR moy (%)"], name="HR moy",
-                                marker_color="#9E9E9E", **bar_labels(".0f")))
-        fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR max (%)"], name="HR max",
-                                marker=dict(color=TEAL, opacity=0.9), **bar_labels(".0f")))
-        fig_hr.update_layout(**_layout("Humidité relative par variante (%)", "HR (%)"))
-        # Dégagement au-dessus de 100 % pour ne pas couper l'étiquette « outside » du max
-        fig_hr.update_layout(yaxis_range=[0, 112])
-        show_plotly(finalize_fig(fig_hr), width='stretch')
+        show_plotly(gsyn.graphique_humidite(df, noms_var), width='stretch')
 
     # ----------------------------- Confort -----------------------------
     with tab_conf:
@@ -188,29 +139,8 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
 
         st.divider()
 
-        # % hors confort 0 / 1 m/s
         st.subheader("Part d'inconfort (heures d'occupation)")
-        fig_c = go.Figure()
-        for col, op in [(cols_pct[0], 0.6), (cols_pct[1] if len(cols_pct) > 1 else cols_pct[0], 1.0)]:
-            fig_c.add_trace(go.Bar(x=noms_var, y=df[col], name=col,
-                                   marker=dict(color=ROUGE, opacity=op), **bar_labels(".1f")))
-        fig_c.update_layout(**_layout("Part d'inconfort par variante (%)", "% des heures d'occupation"))
-        show_plotly(finalize_fig(fig_c), width='stretch')
+        show_plotly(gsyn.graphique_part_inconfort(df, noms_var), width='stretch')
 
-        # Inconfort jour / nuit par variante
         st.subheader("Inconfort jour / nuit")
-        fig_dn_bar = go.Figure()
-        specs_dn = [
-            ('% inconfort jour 0 m/s', 'Jour · 0 m/s', ORANGE, 0.9),
-            ('% inconfort nuit 0 m/s', 'Nuit · 0 m/s', INDIGO, 0.9),
-            ('% inconfort jour 1 m/s', 'Jour · 1 m/s', ORANGE, 0.45),
-            ('% inconfort nuit 1 m/s', 'Nuit · 1 m/s', INDIGO, 0.45),
-        ]
-        for col, name, color, op in specs_dn:
-            if col in df_dn.columns:
-                fig_dn_bar.add_trace(go.Bar(x=noms_var, y=df_dn[col], name=name,
-                                            marker=dict(color=color, opacity=op),
-                                            **bar_labels(".1f")))
-        fig_dn_bar.update_layout(**_layout("Inconfort jour / nuit par variante (%)",
-                                           "% des heures d'occupation"))
-        show_plotly(finalize_fig(fig_dn_bar), width='stretch')
+        show_plotly(gsyn.graphique_inconfort_jour_nuit(df_dn, noms_var), width='stretch')

@@ -108,6 +108,7 @@ def generer_rapport(
     periodes_on: bool = False,
     periodes: list[dict] | None = None,
     format_fr: bool = True,
+    inclure_graphiques_synthese: bool = True,
 ) -> BytesIO:
     """
     Génère le rapport Word complet selon la trame fixe:
@@ -287,11 +288,12 @@ def generer_rapport(
 
     # -- 1bis. Inconfort par plage horaire (jour / nuit) --
     _para_rouge(doc, "Inconfort par plage horaire (jour / nuit)", level=2)
-    rows_dn = []
+    rows_dn = []        # formaté (tableau)
+    rows_dn_num = []    # numérique (graphe)
     for var in variantes:
         dn = var.inconfort_plages_horaires(config, methode, jour_debut, jour_fin)
-        rows_dn.append({'Variante': var.nom,
-                        **{k: _pct(v) for k, v in dn.items()}})
+        rows_dn.append({'Variante': var.nom, **{k: _pct(v) for k, v in dn.items()}})
+        rows_dn_num.append({'Variante': var.nom, **dn})
     if rows_dn:
         _table_df(doc, _pd.DataFrame(rows_dn).set_index('Variante'), index_label="Variante")
     p_dn = doc.add_paragraph(
@@ -299,6 +301,25 @@ def generer_rapport(
         f"{jour_fin:.0f} h[ / nuit. Agrégat bâtiment pondéré par la surface utile.")
     p_dn.runs[0].font.size = Pt(8)
     p_dn.runs[0].font.color.rgb = C_NOIR70
+
+    # -- 1ter. Graphiques bâtiment (barres, comparaison des variantes) --
+    # Mêmes figures que la vue « Synthèse générale » (source unique charts/synthese).
+    if inclure_graphiques_synthese and not df_syn.empty:
+        from charts import synthese as _gsyn
+        _noms = df_syn['Variante'].tolist()
+        _df_dn_num = _pd.DataFrame(rows_dn_num).set_index('Variante') if rows_dn_num else None
+        _figs = [
+            _gsyn.graphique_besoins(df_syn, _noms),
+            _gsyn.graphique_temperatures(df_syn, _noms),
+            _gsyn.graphique_heures_depassement(df_syn, _noms, seuil_t0, seuil_t1, seuil_t2),
+            _gsyn.graphique_humidite(df_syn, _noms),
+            _gsyn.graphique_part_inconfort(df_syn, _noms),
+            _gsyn.graphique_inconfort_jour_nuit(_df_dn_num, _noms) if _df_dn_num is not None else None,
+        ]
+        for _f in _figs:
+            if _f is not None:
+                doc.add_picture(_fig_to_image(_f), width=Cm(17))
+                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     # -- 2. Focus zones --
     if zones_focus and variantes:

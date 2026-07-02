@@ -189,5 +189,5 @@ def test_rapport_word_nom_projet_vide(tmp_path):
     for nom in ("", "Mon Projet"):
         buf = generer_rapport(variantes=[v], config={}, seuil_t1=26.0, seuil_t2=28.0,
                               zones_focus=[], zones_comparaison=[], nom_projet=nom,
-                              methode="givoni")
+                              methode="givoni", inclure_graphiques_synthese=False)
         assert buf.getvalue()   # buffer non vide
