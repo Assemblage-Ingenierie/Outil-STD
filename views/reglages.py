@@ -209,6 +209,14 @@ def render_reglages():
     _section_nouveau_projet()
     st.divider()
     _section_maintenance()
+    _pied_version()
+
+
+# ----------------------------------------------------------------------
+def _pied_version():
+    from config.version import version_affichee, DATE_MAJ
+    st.divider()
+    st.caption(f"Outil STD · {version_affichee()} · dernière mise à jour : {DATE_MAJ}")
 
 
 # ----------------------------------------------------------------------
