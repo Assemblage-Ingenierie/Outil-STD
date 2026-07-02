@@ -186,6 +186,11 @@ def _lancer_fenetre_native() -> bool:
             return False
         try:
             import webview
+            # Sans ceci, pywebview ANNULE silencieusement tout téléchargement
+            # (ALLOW_DOWNLOADS=False par défaut) : le bouton 📷 de Plotly et le
+            # téléchargement du rapport Word ne produisent rien dans la fenêtre
+            # native. Activé → WebView2 ouvre une boîte « Enregistrer sous ».
+            webview.settings['ALLOW_DOWNLOADS'] = True
             webview.create_window("Outil STD — Assemblage ingénierie", URL,
                                   width=1400, height=900)
             webview.start()        # bloque jusqu'à fermeture de la fenêtre
