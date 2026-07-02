@@ -27,7 +27,11 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     seuil_t0 = st.session_state.get('cfg_seuil_t0', 18.0)
     dh_col = f"DH > {seuil_t1:.0f}°C (°C·h)"
     cols_heures = [f'H < {seuil_t0:.0f}°C', f'H > {seuil_t1:.0f}°C', f'H > {seuil_t2:.0f}°C']
-    # -- Tableau : une ligne par variante --
+    _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
+
+    # ==================================================================
+    # Données
+    # ==================================================================
     rows = []
     for var in variantes_sel:
         ind = var.indicateurs_batiment(config, methode, seuil_t0=seuil_t0,
@@ -36,47 +40,10 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
             ind[dh_col] = var.dh_batiment(seuil_t1)
         rows.append({'Variante': var.nom, **ind})
     df = pd.DataFrame(rows).set_index('Variante')
-
     cols_pct = [c for c in df.columns if c.startswith('% hors')]
-    fmt = {
-        'Surface totale (m²)': '{:.0f}',
-        'Besoins chaud (kWh)': '{:.0f}', 'Besoins froid (kWh)': '{:.0f}',
-        'Besoins chaud (kWh/m²)': '{:.1f}', 'Besoins froid (kWh/m²)': '{:.1f}',
-        'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
-        'HR min (%)': '{:.0f}', 'HR moy (%)': '{:.0f}', 'HR max (%)': '{:.0f}',
-        **{c: '{:.0f}' for c in cols_heures if c in df.columns},
-        **{c: '{:.1f} %' for c in cols_pct},
-    }
-    if dh_on:
-        fmt[dh_col] = '{:.0f}'
 
-    def _style_na(col):
-        return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
-                if v != v else '' for v in col]
-
-    _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
-    st.dataframe(
-        df.style.format(fmt, na_rep='NA', decimal=_dec, thousands=' ', precision=1)
-              .background_gradient(subset=cols_pct, cmap='YlOrRd')
-              .apply(_style_na, subset=cols_pct),
-        width='stretch',
-    )
-    st.caption("Indicateurs au niveau bâtiment. T moy / HR moy = moyennes pondérées par la "
-               "surface ; T et HR min/max = extrêmes toutes zones. "
-               f"« H < {seuil_t0:.0f}°C / H > {seuil_t1:.0f}°C / H > {seuil_t2:.0f}°C » = "
-               "heures moyennes par zone, pondérées par la surface utile. "
-               "« % hors » = heures d'occupation hors zone de confort (pondéré par les "
-               "heures d'occupation de chaque zone). « NA » : aucune zone occupée.")
-
-    csv = df.to_csv().encode('utf-8-sig')
-    st.download_button("⬇️ Exporter la synthèse (CSV)", data=csv,
-                       file_name="synthese_generale.csv", mime="text/csv",
-                       key="dl_syn_global")
-
-    # -- Tableau : inconfort par plage horaire jour / nuit --
     jour_debut = st.session_state.get('cfg_jour_debut', 7.0)
     jour_fin = st.session_state.get('cfg_jour_fin', 22.0)
-    st.subheader("Inconfort par plage horaire (jour / nuit)")
     rows_dn = []
     for var in variantes_sel:
         dn = var.inconfort_plages_horaires(config, methode, jour_debut, jour_fin)
@@ -84,30 +51,20 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
     df_dn = pd.DataFrame(rows_dn).set_index('Variante')
     cols_dn = list(df_dn.columns)
 
-    def _style_na_dn(col):
+    def _style_na(col):
         return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
                 if v != v else '' for v in col]
 
-    st.dataframe(
-        df_dn.style.format({c: '{:.1f} %' for c in cols_dn},
-                           na_rep='NA', decimal=_dec, thousands=' ', precision=1)
-              .background_gradient(subset=cols_dn, cmap='YlOrRd')
-              .apply(_style_na_dn, subset=cols_dn),
-        width='stretch',
-    )
-    st.caption(f"Part d'heures d'occupation hors confort {('COCO' if methode=='coco' else 'Givoni')}, "
-               f"ventilée jour ([{jour_debut:.0f} h, {jour_fin:.0f} h[) / nuit. "
-               "Agrégat bâtiment pondéré par la surface utile. "
-               "Plages réglables dans l'onglet Réglages.")
-
-    st.divider()
-
-    # -- Graphiques au niveau BÂTIMENT : comparaison des variantes --
+    # ==================================================================
+    # Environnement graphiques (barres bâtiment, comparaison des variantes)
+    # ==================================================================
     import plotly.graph_objects as go
     from config.charte import ROUGE, get_layout, grille_color, finalize_fig, bar_labels
 
     BLEU = "#2196F3"
     TEAL = "#00897B"
+    ORANGE = "#FF9800"
+    INDIGO = "#3F51B5"
     noms_var = list(df.index)
 
     def _layout(titre, ytitre):
@@ -118,67 +75,142 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
                    uniformtext=dict(minsize=8, mode='hide'))
         return lay
 
-    # Besoins chaud / froid (kWh/m²)
-    st.subheader("Besoins de chauffage et de climatisation")
-    fig_b = go.Figure()
-    fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins chaud (kWh/m²)"],
-                           name="Chauffage", marker_color=ROUGE, **bar_labels()))
-    fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins froid (kWh/m²)"],
-                           name="Climatisation", marker_color=BLEU, **bar_labels()))
-    fig_b.update_layout(**_layout("Besoins par variante (kWh/m²)", "kWh/m²"))
-    show_plotly(finalize_fig(fig_b), width='stretch')
+    # ==================================================================
+    # Onglets thématiques (comme la vue Focus zone)
+    # ==================================================================
+    tab_syn, tab_bes, tab_temp, tab_hum, tab_conf = st.tabs(
+        ["📋 Synthèse", "⚡ Besoins", "🌡️ Températures", "💧 Humidité", "🔆 Confort"])
 
-    # Températures min / moy / max
-    st.subheader("Températures du bâtiment")
-    fig_t = go.Figure()
-    fig_t.add_trace(go.Bar(x=noms_var, y=df["T min (°C)"], name="T min",
-                           marker=dict(color=BLEU, opacity=0.6), **bar_labels()))
-    fig_t.add_trace(go.Bar(x=noms_var, y=df["T moy (°C)"], name="T moy",
-                           marker_color="#9E9E9E", **bar_labels()))
-    fig_t.add_trace(go.Bar(x=noms_var, y=df["T max (°C)"], name="T max",
-                           marker=dict(color=ROUGE, opacity=0.85), **bar_labels()))
-    fig_t.update_layout(**_layout("Températures par variante (°C)", "°C"))
-    show_plotly(finalize_fig(fig_t), width='stretch')
+    # ----------------------------- Synthèse ----------------------------
+    with tab_syn:
+        fmt = {
+            'Surface totale (m²)': '{:.0f}',
+            'Besoins chaud (kWh)': '{:.0f}', 'Besoins froid (kWh)': '{:.0f}',
+            'Besoins chaud (kWh/m²)': '{:.1f}', 'Besoins froid (kWh/m²)': '{:.1f}',
+            'T min (°C)': '{:.1f}', 'T moy (°C)': '{:.1f}', 'T max (°C)': '{:.1f}',
+            'HR min (%)': '{:.0f}', 'HR moy (%)': '{:.0f}', 'HR max (%)': '{:.0f}',
+            **{c: '{:.0f}' for c in cols_heures if c in df.columns},
+            **{c: '{:.1f} %' for c in cols_pct},
+        }
+        if dh_on:
+            fmt[dh_col] = '{:.0f}'
+        st.dataframe(
+            df.style.format(fmt, na_rep='NA', decimal=_dec, thousands=' ', precision=1)
+                  .background_gradient(subset=cols_pct, cmap='YlOrRd')
+                  .apply(_style_na, subset=cols_pct),
+            width='stretch',
+        )
+        st.caption("Indicateurs au niveau bâtiment. T moy / HR moy = moyennes pondérées par la "
+                   "surface ; T et HR min/max = extrêmes toutes zones. "
+                   f"« H < {seuil_t0:.0f}°C / H > {seuil_t1:.0f}°C / H > {seuil_t2:.0f}°C » = "
+                   "heures moyennes par zone, pondérées par la surface utile. "
+                   "« % hors » = heures d'occupation hors zone de confort (pondéré par les "
+                   "heures d'occupation de chaque zone). « NA » : aucune zone occupée.")
 
-    # Humidité relative min / moy / max
-    st.subheader("Humidité relative du bâtiment")
-    fig_hr = go.Figure()
-    fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR min (%)"], name="HR min",
-                            marker=dict(color=BLEU, opacity=0.45), **bar_labels(".0f")))
-    fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR moy (%)"], name="HR moy",
-                            marker_color="#9E9E9E", **bar_labels(".0f")))
-    fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR max (%)"], name="HR max",
-                            marker=dict(color=TEAL, opacity=0.9), **bar_labels(".0f")))
-    fig_hr.update_layout(**_layout("Humidité relative par variante (%)", "HR (%)"))
-    # Dégagement au-dessus de 100 % pour ne pas couper l'étiquette « outside » du max
-    fig_hr.update_layout(yaxis_range=[0, 112])
-    show_plotly(finalize_fig(fig_hr), width='stretch')
+        csv = df.to_csv().encode('utf-8-sig')
+        st.download_button("⬇️ Exporter la synthèse (CSV)", data=csv,
+                           file_name="synthese_generale.csv", mime="text/csv",
+                           key="dl_syn_global")
 
-    # % hors confort 0 / 1 m/s
-    st.subheader("Part d'inconfort (heures d'occupation)")
-    fig_c = go.Figure()
-    for col, op in [(cols_pct[0], 0.6), (cols_pct[1] if len(cols_pct) > 1 else cols_pct[0], 1.0)]:
-        fig_c.add_trace(go.Bar(x=noms_var, y=df[col], name=col,
-                               marker=dict(color=ROUGE, opacity=op), **bar_labels(".1f")))
-    fig_c.update_layout(**_layout("Part d'inconfort par variante (%)", "% des heures d'occupation"))
-    show_plotly(finalize_fig(fig_c), width='stretch')
+    # ----------------------------- Besoins -----------------------------
+    with tab_bes:
+        st.subheader("Besoins de chauffage et de climatisation")
+        fig_b = go.Figure()
+        fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins chaud (kWh/m²)"],
+                               name="Chauffage", marker_color=ROUGE, **bar_labels()))
+        fig_b.add_trace(go.Bar(x=noms_var, y=df["Besoins froid (kWh/m²)"],
+                               name="Climatisation", marker_color=BLEU, **bar_labels()))
+        fig_b.update_layout(**_layout("Besoins par variante (kWh/m²)", "kWh/m²"))
+        show_plotly(finalize_fig(fig_b), width='stretch')
 
-    # Inconfort jour / nuit par variante
-    st.subheader("Inconfort jour / nuit")
-    ORANGE = "#FF9800"
-    INDIGO = "#3F51B5"
-    fig_dn_bar = go.Figure()
-    specs_dn = [
-        ('% inconfort jour 0 m/s', 'Jour · 0 m/s', ORANGE, 0.9),
-        ('% inconfort nuit 0 m/s', 'Nuit · 0 m/s', INDIGO, 0.9),
-        ('% inconfort jour 1 m/s', 'Jour · 1 m/s', ORANGE, 0.45),
-        ('% inconfort nuit 1 m/s', 'Nuit · 1 m/s', INDIGO, 0.45),
-    ]
-    for col, name, color, op in specs_dn:
-        if col in df_dn.columns:
-            fig_dn_bar.add_trace(go.Bar(x=noms_var, y=df_dn[col], name=name,
-                                        marker=dict(color=color, opacity=op),
-                                        **bar_labels(".1f")))
-    fig_dn_bar.update_layout(**_layout("Inconfort jour / nuit par variante (%)",
-                                       "% des heures d'occupation"))
-    show_plotly(finalize_fig(fig_dn_bar), width='stretch')
+    # --------------------------- Températures --------------------------
+    with tab_temp:
+        st.subheader("Températures du bâtiment")
+        fig_t = go.Figure()
+        fig_t.add_trace(go.Bar(x=noms_var, y=df["T min (°C)"], name="T min",
+                               marker=dict(color=BLEU, opacity=0.6), **bar_labels()))
+        fig_t.add_trace(go.Bar(x=noms_var, y=df["T moy (°C)"], name="T moy",
+                               marker_color="#9E9E9E", **bar_labels()))
+        fig_t.add_trace(go.Bar(x=noms_var, y=df["T max (°C)"], name="T max",
+                               marker=dict(color=ROUGE, opacity=0.85), **bar_labels()))
+        fig_t.update_layout(**_layout("Températures par variante (°C)", "°C"))
+        show_plotly(finalize_fig(fig_t), width='stretch')
+
+        # Heures de dépassement des seuils de température (H<T0 / H>T1 / H>T2)
+        st.subheader("Heures de dépassement des seuils de température")
+        cols_h = [c for c in cols_heures if c in df.columns]
+        if cols_h:
+            couleurs_h = {f'H < {seuil_t0:.0f}°C': BLEU,
+                          f'H > {seuil_t1:.0f}°C': ORANGE,
+                          f'H > {seuil_t2:.0f}°C': ROUGE}
+            fig_h = go.Figure()
+            for c in cols_h:
+                fig_h.add_trace(go.Bar(x=noms_var, y=df[c], name=c,
+                                       marker_color=couleurs_h.get(c, "#9E9E9E"),
+                                       **bar_labels(".0f")))
+            fig_h.update_layout(**_layout("Heures de dépassement par variante", "heures (moy. par zone)"))
+            show_plotly(finalize_fig(fig_h), width='stretch')
+            st.caption("Heures moyennes par zone, pondérées par la surface utile : sous "
+                       f"{seuil_t0:.0f}°C (froid), au-dessus de {seuil_t1:.0f}°C et {seuil_t2:.0f}°C "
+                       "(surchauffe). Seuils réglables dans l'onglet Réglages.")
+        else:
+            st.info("Aucun seuil de dépassement disponible.")
+
+    # ---------------------------- Humidité -----------------------------
+    with tab_hum:
+        st.subheader("Humidité relative du bâtiment")
+        fig_hr = go.Figure()
+        fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR min (%)"], name="HR min",
+                                marker=dict(color=BLEU, opacity=0.45), **bar_labels(".0f")))
+        fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR moy (%)"], name="HR moy",
+                                marker_color="#9E9E9E", **bar_labels(".0f")))
+        fig_hr.add_trace(go.Bar(x=noms_var, y=df["HR max (%)"], name="HR max",
+                                marker=dict(color=TEAL, opacity=0.9), **bar_labels(".0f")))
+        fig_hr.update_layout(**_layout("Humidité relative par variante (%)", "HR (%)"))
+        # Dégagement au-dessus de 100 % pour ne pas couper l'étiquette « outside » du max
+        fig_hr.update_layout(yaxis_range=[0, 112])
+        show_plotly(finalize_fig(fig_hr), width='stretch')
+
+    # ----------------------------- Confort -----------------------------
+    with tab_conf:
+        st.subheader("Inconfort par plage horaire (jour / nuit)")
+        st.dataframe(
+            df_dn.style.format({c: '{:.1f} %' for c in cols_dn},
+                               na_rep='NA', decimal=_dec, thousands=' ', precision=1)
+                  .background_gradient(subset=cols_dn, cmap='YlOrRd')
+                  .apply(_style_na, subset=cols_dn),
+            width='stretch',
+        )
+        st.caption(f"Part d'heures d'occupation hors confort {('COCO' if methode=='coco' else 'Givoni')}, "
+                   f"ventilée jour ([{jour_debut:.0f} h, {jour_fin:.0f} h[) / nuit. "
+                   "Agrégat bâtiment pondéré par la surface utile. "
+                   "Plages réglables dans l'onglet Réglages.")
+
+        st.divider()
+
+        # % hors confort 0 / 1 m/s
+        st.subheader("Part d'inconfort (heures d'occupation)")
+        fig_c = go.Figure()
+        for col, op in [(cols_pct[0], 0.6), (cols_pct[1] if len(cols_pct) > 1 else cols_pct[0], 1.0)]:
+            fig_c.add_trace(go.Bar(x=noms_var, y=df[col], name=col,
+                                   marker=dict(color=ROUGE, opacity=op), **bar_labels(".1f")))
+        fig_c.update_layout(**_layout("Part d'inconfort par variante (%)", "% des heures d'occupation"))
+        show_plotly(finalize_fig(fig_c), width='stretch')
+
+        # Inconfort jour / nuit par variante
+        st.subheader("Inconfort jour / nuit")
+        fig_dn_bar = go.Figure()
+        specs_dn = [
+            ('% inconfort jour 0 m/s', 'Jour · 0 m/s', ORANGE, 0.9),
+            ('% inconfort nuit 0 m/s', 'Nuit · 0 m/s', INDIGO, 0.9),
+            ('% inconfort jour 1 m/s', 'Jour · 1 m/s', ORANGE, 0.45),
+            ('% inconfort nuit 1 m/s', 'Nuit · 1 m/s', INDIGO, 0.45),
+        ]
+        for col, name, color, op in specs_dn:
+            if col in df_dn.columns:
+                fig_dn_bar.add_trace(go.Bar(x=noms_var, y=df_dn[col], name=name,
+                                            marker=dict(color=color, opacity=op),
+                                            **bar_labels(".1f")))
+        fig_dn_bar.update_layout(**_layout("Inconfort jour / nuit par variante (%)",
+                                           "% des heures d'occupation"))
+        show_plotly(finalize_fig(fig_dn_bar), width='stretch')

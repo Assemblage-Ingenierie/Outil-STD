@@ -3,12 +3,15 @@
 - vitesse d'air dans la légende COCO + annotations sur le diagramme
 - séparateur décimal virgule dans le rapport Word (format_fr)
 """
+import os
 import re
 import numpy as np
 import config.charte as charte
 from core import confort
 from charts.givoni import creer_givoni
 from tests.test_nouvelles_fonctions import _variante
+
+APP = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app.py")
 
 
 # ----------------------------------------------------------------------
@@ -77,3 +80,21 @@ def test_rapport_word_separateur_decimal(tmp_path):
     assert any(re.search(r"\d,\d", c) for c in cells_fr), "virgule attendue en format FR"
     assert not any(re.search(r"\d\.\d", c) for c in cells_fr), "aucun point décimal en format FR"
     assert any(re.search(r"\d\.\d", c) for c in cells_pt), "point attendu si format_fr=False"
+
+
+# ----------------------------------------------------------------------
+# Synthèse générale : onglets thématiques + graphe heures de dépassement
+# ----------------------------------------------------------------------
+def test_synthese_generale_onglets_et_graphe_heures(tmp_path):
+    from streamlit.testing.v1 import AppTest
+    v = _variante(tmp_path, ["A", "B"], n_rows=48)
+    at = AppTest.from_file(APP, default_timeout=90)
+    at.session_state["variantes"] = [v]
+    at.session_state["nav_vue"] = "Synthèse générale"
+    at.run()
+    assert not at.exception
+    # 5 onglets thématiques (Synthèse / Besoins / Températures / Humidité / Confort)
+    assert len(at.tabs) == 5
+    # 6 graphes : besoins, températures, HEURES DE DÉPASSEMENT (nouveau),
+    # humidité, % inconfort, inconfort jour/nuit.
+    assert len(at.get("plotly_chart")) == 6
