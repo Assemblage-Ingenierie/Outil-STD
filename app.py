@@ -32,8 +32,9 @@ CONFIG_DEFAULT = BASE_DIR / 'config' / 'projet_defaut.toml'
 # -- CSS charte Assemblage --
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
-
+    /* Application locale/hors-ligne : pas d'@import de police distante (Google
+       Fonts) — inutile sans réseau et évite un appel externe. On s'appuie sur
+       « Open Sans » si installée, sinon la police sans-serif du système. */
     html, body, [class*="css"] { font-family: 'Open Sans', sans-serif; }
 
     [data-testid="stSidebar"] {

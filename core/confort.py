@@ -149,11 +149,36 @@ def polygone_zone(config: dict, methode: str, vitesse: float):
 # ======================================================================
 
 def _points_dans_polygone(T_pts, w_pts, T_poly, w_poly):
-    """Test vectorisé point-dans-polygone (matplotlib.path)."""
-    from matplotlib.path import Path
-    poly = Path(np.column_stack([T_poly, w_poly]))
-    pts = np.column_stack([np.asarray(T_pts, float), np.asarray(w_pts, float)])
-    return poly.contains_points(pts)
+    """
+    Test vectorisé point-dans-polygone (algorithme de lancer de rayon / PNPOLY),
+    en numpy pur — évite d'embarquer matplotlib juste pour ``Path.contains_points``.
+
+    Vectorisé sur les points ; boucle sur les ~30 arêtes du polygone de confort.
+    Règle pair/impair : un point est intérieur si un rayon horizontal vers la
+    droite croise un nombre impair d'arêtes.
+    """
+    x = np.asarray(T_pts, dtype=float)
+    y = np.asarray(w_pts, dtype=float)
+    vx = np.asarray(T_poly, dtype=float)
+    vy = np.asarray(w_poly, dtype=float)
+    if x.size == 0:
+        return np.zeros(x.shape, dtype=bool)
+    # Fermer le contour si le dernier sommet ne rejoint pas le premier.
+    if vx[0] != vx[-1] or vy[0] != vy[-1]:
+        vx = np.append(vx, vx[0])
+        vy = np.append(vy, vy[0])
+    inside = np.zeros(x.shape, dtype=bool)
+    for i in range(len(vx) - 1):
+        y1, y2 = vy[i], vy[i + 1]
+        if y1 == y2:
+            continue   # arête horizontale : ne peut pas être croisée par le rayon
+        x1, x2 = vx[i], vx[i + 1]
+        # Arêtes dont l'ordonnée encadre y (une seule des deux extrémités > y).
+        cond = (y1 > y) != (y2 > y)
+        # Abscisse de l'intersection de l'arête avec l'horizontale passant par y.
+        xint = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+        inside ^= cond & (x < xint)
+    return inside
 
 
 def dans_zone(T, w, config: dict, methode: str, vitesse: float):

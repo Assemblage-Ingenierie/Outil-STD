@@ -16,8 +16,7 @@ import streamlit as st
 
 from core.variante import charger_variante, Variante
 from core.slk_parser import FichierInvalideError
-from core.file_picker import choisir_fichier, enregistrer_fichier
-from core import projet as projet_io
+from core.file_picker import choisir_fichier
 from views.widgets import persist_number, persist_radio, persist_checkbox, persist_text
 
 

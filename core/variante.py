@@ -4,11 +4,28 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import pandas as pd
 import numpy as np
-import toml
 
 from core.slk_parser import parse_resultats, parse_synthese
 from core.try_parser import parse_try, humidite_absolue
 from core import confort
+
+
+def construire_horodatage(df_horaire: pd.DataFrame) -> pd.DatetimeIndex:
+    """Index datetime horaire depuis les colonnes mois/jour/heure (année fixe 2024).
+    Repli sur un RangeIndex si les colonnes sont absentes/invalides.
+
+    Fonction pure partagée par les graphiques (via ``Variante.horodatage`` qui la
+    mémoïse) : l'index temporel est identique pour toutes les figures d'une variante.
+    """
+    try:
+        return pd.to_datetime({
+            'year': 2024,
+            'month': df_horaire['mois'].astype(int),
+            'day': df_horaire['jour'].astype(int),
+            'hour': (df_horaire['heure'].astype(int) - 1).clip(0, 23),
+        })
+    except Exception:
+        return pd.RangeIndex(len(df_horaire))
 
 
 @dataclass
@@ -29,6 +46,16 @@ class Variante:
     # Cache du masque de période (clé = (periode, n)) ; periode peut être mutée
     # en place entre re-runs (app.py) → la clé l'absorbe.
     _mask_cache: dict = field(default_factory=dict, repr=False, compare=False)
+    # Cache des stats T°/HR par zone (clé = (grandeur, zone, periode)).
+    _stats_cache: dict = field(default_factory=dict, repr=False, compare=False)
+    # Cache du test de confort (dedans, exempt) par (zone, vitesse, config, methode).
+    # INDÉPENDANT de la période : le masquage période est appliqué après coup.
+    # Évite de refaire le point-dans-polygone (coûteux) pour chaque appelant.
+    _dedans_cache: dict = field(default_factory=dict, repr=False, compare=False)
+    # Cache de l'inconfort jour/nuit (clé = config, methode, plages, zones, periode).
+    _plages_cache: dict = field(default_factory=dict, repr=False, compare=False)
+    # Index datetime horaire, construit une seule fois (invariant).
+    _horodate_cache: object = field(default=None, repr=False, compare=False)
 
     def a_meteo(self) -> bool:
         return self.df_meteo is not None and not self.df_meteo.empty
@@ -79,6 +106,32 @@ class Variante:
     def meteo_affiche(self) -> str:
         """Libellé météo à afficher : le label convivial sinon le nom de fichier."""
         return self.meteo_label or self.meteo_nom or ""
+
+    def horodatage(self):
+        """Index datetime horaire (mois/jour/heure), construit une seule fois puis
+        mémoïsé (invariant sur la durée de vie de la variante)."""
+        if self._horodate_cache is None:
+            self._horodate_cache = construire_horodatage(self.df_horaire)
+        return self._horodate_cache
+
+    @staticmethod
+    def _config_key(config: dict):
+        """Clé de hachage stable d'une configuration (dict potentiellement imbriqué).
+        Repli sur l'identité si la config n'est pas hachable."""
+        try:
+            return hash(repr(sorted((config or {}).items())))
+        except Exception:
+            return id(config)
+
+    @staticmethod
+    def _moyenne_ponderee(somme_ponderee: float, somme_poids: float,
+                          valeurs_simples: list) -> float:
+        """Moyenne pondérée (somme_ponderee / somme_poids) si des poids existent,
+        sinon moyenne simple des valeurs (NaN ignorés). NaN si rien d'exploitable."""
+        if somme_poids > 0:
+            return somme_ponderee / somme_poids
+        vals = [x for x in valeurs_simples if x == x]
+        return float(np.mean(vals)) if vals else np.nan
 
     def __post_init__(self):
         if not self.zones and 'zones' in self.df_horaire.attrs:
@@ -243,33 +296,45 @@ class Variante:
         return (mois >= m1) | (mois <= m2)
 
     def stats_temp(self, zone: str) -> dict:
+        key = ('t', zone, self.periode)
+        cached = self._stats_cache.get(key)
+        if cached is not None:
+            return cached
         s = self.col_temp(zone)
         if s.empty:
-            return {'t_min': np.nan, 't_moy': np.nan, 't_max': np.nan}
-        v = s.values
-        v = v[self.masque_periode(len(v))]
-        if v.size == 0:
-            return {'t_min': np.nan, 't_moy': np.nan, 't_max': np.nan}
-        return {
-            't_min': float(v.min()),
-            't_moy': float(v.mean()),
-            't_max': float(v.max()),
-        }
+            res = {'t_min': np.nan, 't_moy': np.nan, 't_max': np.nan}
+        else:
+            v = s.values
+            v = v[self.masque_periode(len(v))]
+            if v.size == 0:
+                res = {'t_min': np.nan, 't_moy': np.nan, 't_max': np.nan}
+            else:
+                res = {'t_min': float(v.min()),
+                       't_moy': float(v.mean()),
+                       't_max': float(v.max())}
+        self._stats_cache[key] = res
+        return res
 
     def stats_hr(self, zone: str) -> dict:
         """Min / moyenne / max d'humidité relative intérieure (%) sur la période."""
+        key = ('hr', zone, self.periode)
+        cached = self._stats_cache.get(key)
+        if cached is not None:
+            return cached
         s = self.col_hr(zone)
         if s.empty:
-            return {'hr_min': np.nan, 'hr_moy': np.nan, 'hr_max': np.nan}
-        v = s.values
-        v = v[self.masque_periode(len(v))]
-        if v.size == 0:
-            return {'hr_min': np.nan, 'hr_moy': np.nan, 'hr_max': np.nan}
-        return {
-            'hr_min': float(v.min()),
-            'hr_moy': float(v.mean()),
-            'hr_max': float(v.max()),
-        }
+            res = {'hr_min': np.nan, 'hr_moy': np.nan, 'hr_max': np.nan}
+        else:
+            v = s.values
+            v = v[self.masque_periode(len(v))]
+            if v.size == 0:
+                res = {'hr_min': np.nan, 'hr_moy': np.nan, 'hr_max': np.nan}
+            else:
+                res = {'hr_min': float(v.min()),
+                       'hr_moy': float(v.mean()),
+                       'hr_max': float(v.max())}
+        self._stats_cache[key] = res
+        return res
 
     def heures_hors_confort(self, zone: str, config: dict, vitesse: float,
                             methode: str = "givoni") -> int:
@@ -365,12 +430,37 @@ class Variante:
             occupe = occupe & np.asarray(masque_extra)[:n]
         n_occ = int(occupe.sum())
         if n_occ == 0:
-            return 0, 0
-        dedans = confort.dans_zone(t.values[:n], w.values[:n], config, methode, vitesse)
-        exempt = confort.masque_chauffe_sous_consigne(
-            t.values[:n], self._est_chauffe(zone, n), config, methode)
-        hors_et_occupe = (~dedans) & (~exempt) & occupe
+            return 0, 0   # aucune heure occupée : pas besoin du test de confort
+        dedans, exempt = self._dedans_exempt(zone, config, vitesse, methode)
+        hors_et_occupe = (~dedans[:n]) & (~exempt[:n]) & occupe
         return int(hors_et_occupe.sum()), n_occ
+
+    def _dedans_exempt(self, zone: str, config: dict, vitesse: float,
+                       methode: str = "givoni"):
+        """
+        Renvoie (dedans, exempt) pour une zone : masques booléens « point (T, w)
+        dans la zone de confort » et « chauffe sous consigne à exclure », calculés
+        sur TOUTES les heures (indépendant de la période/occupation, appliquées
+        après coup par l'appelant).
+
+        Mémoïsé par (zone, vitesse, config, methode) : le point-dans-polygone
+        (coûteux) n'est calculé qu'une fois puis réutilisé par le décompte confort,
+        les indicateurs bâtiment et l'inconfort jour/nuit (mêmes conditions
+        intérieures pour un même paramétrage).
+        """
+        key = (zone, float(vitesse), self._config_key(config),
+               (methode or "givoni").lower())
+        cached = self._dedans_cache.get(key)
+        if cached is not None:
+            return cached
+        t = self.col_temp(zone)
+        w = self.col_w_interieur(zone)
+        ntw = min(len(t), len(w))
+        dedans = confort.dans_zone(t.values[:ntw], w.values[:ntw], config, methode, vitesse)
+        exempt = confort.masque_chauffe_sous_consigne(
+            t.values[:ntw], self._est_chauffe(zone, ntw), config, methode)
+        self._dedans_cache[key] = (dedans, exempt)
+        return dedans, exempt
 
     def _est_chauffe(self, zone: str, n: int):
         """
@@ -464,10 +554,7 @@ class Variante:
         libelle = "COCO" if methode == "coco" else "Givoni"
 
         # --- cache (C) ---------------------------------------------------
-        try:
-            config_key = hash(repr(sorted(config.items())))
-        except Exception:
-            config_key = id(config)
+        config_key = self._config_key(config)
         cache_key = (methode, config_key, tuple(zones), self.periode,
                      seuil_t0, seuil_t1, seuil_t2)
         if cache_key in self._cache_ind:
@@ -529,21 +616,13 @@ class Variante:
             h1, o1 = self._compte_hors_occupe(zone, config, 1.0, methode)
             tot_hors_1 += h1; tot_occ_1 += o1
 
-        # T moyenne pondérée surface ; repli moyenne simple si pas de surfaces
-        if somme_surf_pour_tmoy > 0:
-            t_moy = somme_tmoy_surf / somme_surf_pour_tmoy
-        else:
-            moys = [self.stats_temp(z)['t_moy'] for z in zones]
-            moys = [m for m in moys if m == m]
-            t_moy = float(np.mean(moys)) if moys else np.nan
-
-        # HR moyenne pondérée surface ; repli moyenne simple si pas de surfaces
-        if somme_surf_pour_hrmoy > 0:
-            hr_moy = somme_hrmoy_surf / somme_surf_pour_hrmoy
-        else:
-            hr_moys = [self.stats_hr(z)['hr_moy'] for z in zones]
-            hr_moys = [m for m in hr_moys if m == m]
-            hr_moy = float(np.mean(hr_moys)) if hr_moys else np.nan
+        # Moyennes pondérées surface ; repli moyenne simple si pas de surfaces.
+        t_moy = self._moyenne_ponderee(
+            somme_tmoy_surf, somme_surf_pour_tmoy,
+            [self.stats_temp(z)['t_moy'] for z in zones])
+        hr_moy = self._moyenne_ponderee(
+            somme_hrmoy_surf, somme_surf_pour_hrmoy,
+            [self.stats_hr(z)['hr_moy'] for z in zones])
 
         result = {
             'Surface totale (m²)': round(surf_tot, 1) if surf_tot else np.nan,
@@ -597,6 +676,11 @@ class Variante:
         """
         config = config or {}
         zones = zones if zones is not None else self.zones
+        cache_key = (self._config_key(config), (methode or "givoni").lower(),
+                     jour_debut, jour_fin, tuple(zones), self.periode)
+        cached = self._plages_cache.get(cache_key)
+        if cached is not None:
+            return cached
         out = {}
         for vit in (0.0, 1.0):
             for plage, est_nuit in (("jour", False), ("nuit", True)):
@@ -618,6 +702,7 @@ class Variante:
                     num += (100.0 * hors / occ) * poids
                     den += poids
                 out[f'% inconfort {plage} {vit:.0f} m/s'] = (num / den) if den else np.nan
+        self._plages_cache[cache_key] = out
         return out
 
     # ------------------------------------------------------------------

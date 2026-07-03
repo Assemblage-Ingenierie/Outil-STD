@@ -1,7 +1,6 @@
 """Vue Niveau 1 — Synthèse générale : un tableau, une ligne par variante (bâtiment)."""
 import streamlit as st
 import pandas as pd
-import numpy as np
 
 from views.widgets import persist_multiselect, show_plotly
 
@@ -108,7 +107,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
 
         # Heures de dépassement des seuils de température (H<T0 / H>T1 / H>T2)
         st.subheader("Heures de dépassement des seuils de température")
-        fig_h = gsyn.graphique_heures_depassement(df, noms_var, seuil_t0, seuil_t1, seuil_t2)
+        fig_h = gsyn.graphique_heures_depassement_batiment(df, noms_var, seuil_t0, seuil_t1, seuil_t2)
         if fig_h is not None:
             show_plotly(fig_h, width='stretch')
             st.caption("Heures moyennes par zone, pondérées par la surface utile : sous "

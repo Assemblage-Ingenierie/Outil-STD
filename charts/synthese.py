@@ -53,8 +53,12 @@ def graphique_temperatures(df, noms_var) -> go.Figure:
     return finalize_fig(fig)
 
 
-def graphique_heures_depassement(df, noms_var, seuil_t0, seuil_t1, seuil_t2):
-    """Heures de dépassement des seuils (H<T0 / H>T1 / H>T2). None si aucune colonne."""
+def graphique_heures_depassement_batiment(df, noms_var, seuil_t0, seuil_t1, seuil_t2):
+    """Heures de dépassement des seuils au niveau BÂTIMENT (H<T0 / H>T1 / H>T2),
+    une barre par variante. None si aucune colonne de seuil présente.
+
+    À ne pas confondre avec ``charts.temperature.graphique_heures_depassement``
+    (par ZONE, à partir des objets Variante)."""
     cols = [f'H < {seuil_t0:.0f}°C', f'H > {seuil_t1:.0f}°C', f'H > {seuil_t2:.0f}°C']
     couleurs = {cols[0]: BLEU, cols[1]: ORANGE, cols[2]: ROUGE}
     presentes = [c for c in cols if c in df.columns]

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-from config.charte import COULEURS_VARIANTES, GRIS, ROUGE, get_layout, finalize_fig, bar_labels
+from config.charte import ROUGE, get_layout, finalize_fig, bar_labels
 from views.widgets import persist_multiselect, persist_selectbox, show_plotly
 
 
