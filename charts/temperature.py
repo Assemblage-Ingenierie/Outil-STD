@@ -2,10 +2,9 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from config.charte import (
-    ROUGE, GRIS, ROUGE_CLAIR, GRIS_CLAIR, BLANC, NOIR, NOIR70,
+    ROUGE,
     COULEURS_VARIANTES,
     get_layout, grille_color, ligne_ext_color, violet_color, finalize_fig, bar_labels,
 )
@@ -13,20 +12,6 @@ from config.charte import (
 
 NOMS_MOIS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 JOURS_CUMULES = [0,31,59,90,120,151,181,212,243,273,304,334,365]
-
-
-def _serie_vers_horodate(df_horaire: pd.DataFrame) -> pd.DatetimeIndex:
-    """Crée un index datetime depuis les colonnes mois/jour/heure."""
-    try:
-        dt = pd.to_datetime({
-            'year': 2024,
-            'month': df_horaire['mois'].astype(int),
-            'day': df_horaire['jour'].astype(int),
-            'hour': (df_horaire['heure'].astype(int) - 1).clip(0, 23),
-        })
-        return dt
-    except Exception:
-        return pd.RangeIndex(len(df_horaire))
 
 
 def graphique_temp_horaire(
@@ -43,7 +28,7 @@ def graphique_temp_horaire(
         s = var.col_temp(zone)
         if s.empty:
             continue
-        x = _serie_vers_horodate(var.df_horaire)
+        x = var.horodatage()
         m = var.masque_periode(len(s))
         color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
         fig.add_trace(go.Scatter(
@@ -70,7 +55,7 @@ def graphique_temp_horaire(
     for j, (nom, var) in enumerate(meteos_vus.items()):
         t_ext = var.df_meteo['T_ext'].values
         n = min(len(t_ext), len(var.df_horaire))
-        x = _serie_vers_horodate(var.df_horaire)
+        x = var.horodatage()
         m = var.masque_periode(n)
         label = f'T ext — {nom}' if multi else 'T extérieure'
         fig.add_trace(go.Scatter(
@@ -370,7 +355,7 @@ def heatmap_temp_jour_heure(
     if s.empty:
         return None
     n = len(s)
-    xi = pd.DatetimeIndex(np.asarray(_serie_vers_horodate(var.df_horaire))[:n])
+    xi = pd.DatetimeIndex(np.asarray(var.horodatage())[:n])
     y = np.asarray(s.values[:n], dtype=float)
     if occupation_seulement:
         occ = var.col_apports_occupants(zone)
@@ -382,7 +367,9 @@ def heatmap_temp_jour_heure(
     if len(xi) == 0:
         return None
     d = pd.DataFrame({'date': xi.normalize(), 'hour': xi.hour, 't': y})
-    piv = d.pivot_table(index='hour', columns='date', values='t').reindex(range(24))
+    # pivot (et non pivot_table) : chaque couple (jour, heure) est unique sur
+    # l'année → pas d'agrégation nécessaire, reshape direct plus rapide.
+    piv = d.pivot(index='hour', columns='date', values='t').reindex(range(24))
     fig = go.Figure(go.Heatmap(
         x=piv.columns, y=piv.index, z=piv.values,
         colorscale='RdYlBu_r', zmin=zmin, zmax=zmax,

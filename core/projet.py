@@ -14,8 +14,6 @@ import gzip
 import pickle
 from pathlib import Path
 
-import pandas as pd
-
 from core.variante import Variante
 
 FORMAT_VERSION = 1

@@ -3,7 +3,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from config.charte import (
-    ROUGE, VIOLET, GRIS, GRIS_CLAIR, BLANC, NOIR, FONT_FAMILY,
+    ROUGE, VIOLET, FONT_FAMILY,
     COULEURS_VARIANTES,
     get_layout, annotation_color, grille_color, courbe_ref_color, is_dark, finalize_fig,
 )

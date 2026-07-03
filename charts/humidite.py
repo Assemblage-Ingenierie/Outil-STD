@@ -7,7 +7,6 @@ from config.charte import (
     COULEURS_VARIANTES,
     get_layout, grille_color, ligne_ext_color, finalize_fig, bar_labels,
 )
-from charts.temperature import _serie_vers_horodate
 
 # Bande de confort hygrométrique usuelle (plage saine recommandée intérieur)
 HR_CONFORT_MIN = 40.0
@@ -26,7 +25,7 @@ def _xy_zone(var, valeurs, n, zone, occupation_seulement):
     """Index temporel + valeurs sur la période, NaN sur les heures inoccupées
     si demandé. Retourne (pd.DatetimeIndex, np.ndarray)."""
     m = var.masque_periode(n)
-    x = _serie_vers_horodate(var.df_horaire)[:n][m]
+    x = var.horodatage()[:n][m]
     y = np.asarray(valeurs[:n], dtype=float)[m]
     if occupation_seulement:
         occ = var.col_apports_occupants(zone)
@@ -134,7 +133,7 @@ def graphique_hr_horaire(
         # de ~4 semaines + rangeslider (contexte annuel) + boutons de zoom.
         base = interieures[0] if interieures else (variantes[0] if variantes else None)
         if base is not None:
-            xs = np.asarray(_serie_vers_horodate(base.df_horaire))
+            xs = np.asarray(base.horodatage())
             mm = base.masque_periode(len(xs))
             xs = xs[mm]
             if len(xs):
@@ -185,7 +184,7 @@ def heatmap_hr_jour_heure(
     if s.empty:
         return None
     n = len(s)
-    xi = pd.DatetimeIndex(np.asarray(_serie_vers_horodate(var.df_horaire))[:n])
+    xi = pd.DatetimeIndex(np.asarray(var.horodatage())[:n])
     y = np.asarray(s.values[:n], dtype=float)
     if occupation_seulement:
         occ = var.col_apports_occupants(zone)
@@ -197,7 +196,8 @@ def heatmap_hr_jour_heure(
     if len(xi) == 0:
         return None
     d = pd.DataFrame({'date': xi.normalize(), 'hour': xi.hour, 'hr': y})
-    piv = d.pivot_table(index='hour', columns='date', values='hr').reindex(range(24))
+    # pivot (et non pivot_table) : couple (jour, heure) unique → reshape direct.
+    piv = d.pivot(index='hour', columns='date', values='hr').reindex(range(24))
     fig = go.Figure(go.Heatmap(
         x=piv.columns, y=piv.index, z=piv.values,
         colorscale='YlGnBu', zmin=20, zmax=100,

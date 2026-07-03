@@ -2,8 +2,6 @@
 from __future__ import annotations
 from pathlib import Path
 from io import BytesIO
-import tempfile
-import os
 
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor, Inches
@@ -49,38 +47,60 @@ def _para_rouge(doc: Document, text: str, level: int = 1) -> None:
     run.font.name = 'Open Sans'
 
 
-def _table_df(doc: Document, df, index_label: str = "") -> None:
-    """Rend un DataFrame en tableau Word stylé charte (en-tête rouge, lignes zébrées).
-    L'index est rendu en 1re colonne (libellé `index_label`)."""
-    df = df.reset_index()
-    if index_label and len(df.columns):
-        df = df.rename(columns={df.columns[0]: index_label})
-    cols = [str(c) for c in df.columns]
-    table = doc.add_table(rows=1 + len(df), cols=len(cols))
+def _ajouter_tableau(doc: Document, cols, lignes, centrer_depuis: int | None = None):
+    """
+    Construit un tableau Word à la charte Assemblage : en-tête rouge sur blanc,
+    lignes zébrées (gris clair 1 sur 2), Open Sans 8 pt. Source unique de tous les
+    tableaux du rapport (synthèse, récapitulatif, descriptif).
+
+    cols   : en-têtes de colonnes.
+    lignes : liste de lignes ; chaque ligne = liste de textes (déjà formatés)
+             alignée sur `cols`.
+    centrer_depuis : si non None, centre les cellules des colonnes d'indice >= à
+                     cette valeur (ex. cases ✕ du récapitulatif).
+    """
+    cols = [str(c) for c in cols]
+    table = doc.add_table(rows=1 + len(lignes), cols=len(cols))
     table.style = 'Table Grid'
-    for j, col_name in enumerate(cols):
+    for j, name in enumerate(cols):
         cell = table.rows[0].cells[j]
-        cell.text = col_name
+        cell.text = name
         _set_cell_bg(cell, (0xE3, 0x05, 0x13))
         run = cell.paragraphs[0].runs[0]
         run.font.color.rgb = C_BLANC
         run.font.bold = True
         run.font.size = Pt(8)
         run.font.name = 'Open Sans'
-    for i, (_, row) in enumerate(df.iterrows()):
-        for j, val in enumerate(row):
+    for i, ligne in enumerate(lignes):
+        for j, txt in enumerate(ligne):
             cell = table.rows[i + 1].cells[j]
-            if isinstance(val, float) and val != val:      # NaN
-                txt = 'NA'
-            else:
-                txt = str(val)
             cell.text = txt
             run = cell.paragraphs[0].runs[0] if cell.paragraphs[0].runs else cell.paragraphs[0].add_run(txt)
             run.font.size = Pt(8)
             run.font.name = 'Open Sans'
+            if centrer_depuis is not None and j >= centrer_depuis:
+                cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
             if i % 2 == 1:
                 _set_cell_bg(cell, (0xF2, 0xF2, 0xF2))
     doc.add_paragraph()
+    return table
+
+
+def _cellule_txt(val) -> str:
+    """Texte d'une valeur de cellule : 'NA' pour un NaN, str() sinon."""
+    if isinstance(val, float) and val != val:      # NaN
+        return 'NA'
+    return str(val)
+
+
+def _table_df(doc: Document, df, index_label: str = "") -> None:
+    """Rend un DataFrame en tableau Word stylé charte (en-tête rouge, lignes zébrées).
+    L'index est rendu en 1re colonne (libellé `index_label`)."""
+    df = df.reset_index()
+    if index_label and len(df.columns):
+        df = df.rename(columns={df.columns[0]: index_label})
+    lignes = [[_cellule_txt(val) for val in row] for _, row in df.iterrows()]
+    _ajouter_tableau(doc, list(df.columns), lignes)
 
 
 def _fig_to_image(fig: go.Figure) -> BytesIO:
@@ -191,53 +211,17 @@ def generer_rapport(
             _para_rouge(doc, "Améliorations par variante", level=2)
             # index = améliorations, colonnes = variantes ; cases cochées -> ✕
             rec = df_recap.reset_index()
-            cols = list(rec.columns)
-            t = doc.add_table(rows=1 + len(rec), cols=len(cols))
-            t.style = 'Table Grid'
-            for j, c in enumerate(cols):
-                cell = t.rows[0].cells[j]
-                cell.text = str(c)
-                _set_cell_bg(cell, (0xE3, 0x05, 0x13))
-                r = cell.paragraphs[0].runs[0]
-                r.font.color.rgb = C_BLANC; r.font.bold = True
-                r.font.size = Pt(8); r.font.name = 'Open Sans'
-            for i, row in rec.iterrows():
-                for j, (cname, val) in enumerate(row.items()):
-                    cell = t.rows[i + 1].cells[j]
-                    if j == 0:
-                        txt = str(val)
-                    else:
-                        txt = "✕" if bool(val) else ""
-                    cell.text = txt
-                    rr = cell.paragraphs[0].runs[0] if cell.paragraphs[0].runs else cell.paragraphs[0].add_run(txt)
-                    rr.font.size = Pt(8); rr.font.name = 'Open Sans'
-                    if j > 0:
-                        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    if i % 2 == 1:
-                        _set_cell_bg(cell, (0xF2, 0xF2, 0xF2))
-            doc.add_paragraph()
+            lignes = [
+                [str(row.iloc[0])] + ["✕" if bool(v) else "" for v in row.iloc[1:]]
+                for _, row in rec.iterrows()
+            ]
+            _ajouter_tableau(doc, list(rec.columns), lignes, centrer_depuis=1)
 
         if df_detail is not None and not df_detail.empty:
             _para_rouge(doc, "Descriptif des améliorations", level=2)
-            dcols = list(df_detail.columns)
-            t2 = doc.add_table(rows=1 + len(df_detail), cols=len(dcols))
-            t2.style = 'Table Grid'
-            for j, c in enumerate(dcols):
-                cell = t2.rows[0].cells[j]
-                cell.text = str(c)
-                _set_cell_bg(cell, (0xE3, 0x05, 0x13))
-                r = cell.paragraphs[0].runs[0]
-                r.font.color.rgb = C_BLANC; r.font.bold = True
-                r.font.size = Pt(8); r.font.name = 'Open Sans'
-            for i, row in df_detail.reset_index(drop=True).iterrows():
-                for j, val in enumerate(row):
-                    cell = t2.rows[i + 1].cells[j]
-                    cell.text = str(val) if val is not None else ""
-                    rr = cell.paragraphs[0].runs[0] if cell.paragraphs[0].runs else cell.paragraphs[0].add_run(cell.text)
-                    rr.font.size = Pt(8); rr.font.name = 'Open Sans'
-                    if i % 2 == 1:
-                        _set_cell_bg(cell, (0xF2, 0xF2, 0xF2))
-            doc.add_paragraph()
+            lignes = [["" if val is None else str(val) for val in row]
+                      for _, row in df_detail.reset_index(drop=True).iterrows()]
+            _ajouter_tableau(doc, list(df_detail.columns), lignes)
 
         doc.add_page_break()
 
@@ -255,36 +239,17 @@ def generer_rapport(
     if df_syn.empty:
         doc.add_paragraph("Aucune donnée disponible.")
     else:
-        cols = list(df_syn.columns)
-        table = doc.add_table(rows=1 + len(df_syn), cols=len(cols))
-        table.style = 'Table Grid'
-        for j, col_name in enumerate(cols):
-            cell = table.rows[0].cells[j]
-            cell.text = col_name
-            _set_cell_bg(cell, (0xE3, 0x05, 0x13))
-            run = cell.paragraphs[0].runs[0]
-            run.font.color.rgb = C_BLANC
-            run.font.bold = True
-            run.font.size = Pt(8)
-            run.font.name = 'Open Sans'
-        for i, row in df_syn.iterrows():
-            for j, (col_name, val) in enumerate(row.items()):
-                cell = table.rows[i + 1].cells[j]
-                if isinstance(val, float) and val != val:          # NaN
-                    txt = 'NA'
-                elif col_name.startswith('% hors') and isinstance(val, (int, float)):
-                    txt = _pct(val)
-                elif isinstance(val, (int, float)):
-                    txt = _num(val)
-                else:
-                    txt = str(val)
-                cell.text = txt
-                run = cell.paragraphs[0].runs[0] if cell.paragraphs[0].runs else cell.paragraphs[0].add_run(txt)
-                run.font.size = Pt(8)
-                run.font.name = 'Open Sans'
-                if i % 2 == 1:
-                    _set_cell_bg(cell, (0xF2, 0xF2, 0xF2))
-        doc.add_paragraph()
+        def _cell_syn(col_name, val) -> str:
+            if isinstance(val, float) and val != val:          # NaN
+                return 'NA'
+            if col_name.startswith('% hors') and isinstance(val, (int, float)):
+                return _pct(val)
+            if isinstance(val, (int, float)):
+                return _num(val)
+            return str(val)
+        lignes = [[_cell_syn(col_name, val) for col_name, val in row.items()]
+                  for _, row in df_syn.iterrows()]
+        _ajouter_tableau(doc, list(df_syn.columns), lignes)
 
     # -- 1bis. Inconfort par plage horaire (jour / nuit) --
     _para_rouge(doc, "Inconfort par plage horaire (jour / nuit)", level=2)
@@ -311,7 +276,7 @@ def generer_rapport(
         _figs = [
             _gsyn.graphique_besoins(df_syn, _noms),
             _gsyn.graphique_temperatures(df_syn, _noms),
-            _gsyn.graphique_heures_depassement(df_syn, _noms, seuil_t0, seuil_t1, seuil_t2),
+            _gsyn.graphique_heures_depassement_batiment(df_syn, _noms, seuil_t0, seuil_t1, seuil_t2),
             _gsyn.graphique_humidite(df_syn, _noms),
             _gsyn.graphique_part_inconfort(df_syn, _noms),
             _gsyn.graphique_inconfort_jour_nuit(_df_dn_num, _noms) if _df_dn_num is not None else None,
