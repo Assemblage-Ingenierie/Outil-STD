@@ -245,9 +245,14 @@ def parse_resultats(filepath: str | Path) -> pd.DataFrame:
             data[f"{type_name}|{zone}"] = _col(col, np.nan)
 
     df = pd.DataFrame(data)
-    df['mois'] = df['mois'].astype(int, errors='ignore')
-    df['jour'] = df['jour'].astype(int, errors='ignore')
-    df['heure'] = df['heure'].astype(int, errors='ignore')
+    # Conversion en entier tolérante : si la colonne contient des NaN (cellules
+    # manquantes), la conversion échoue et on garde la colonne float — comportement
+    # identique à l'ancien astype(errors='ignore') mais sans le paramètre déprécié.
+    for _c in ('mois', 'jour', 'heure'):
+        try:
+            df[_c] = df[_c].astype(int)
+        except (ValueError, TypeError):
+            pass
 
     df.attrs['zones'] = zones
     df.attrs['groupes'] = {k: v for k, v in groupes.items() if k in noms_utiles}

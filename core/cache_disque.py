@@ -22,10 +22,15 @@ Choix techniques (validés) :
 from __future__ import annotations
 import gzip
 import hashlib
+import logging
 import os
 import pickle
 import tempfile
 from pathlib import Path
+
+from core.pickle_securise import charger_securise
+
+logger = logging.getLogger(__name__)
 
 # À incrémenter dès que le format du DataFrame produit par le parser change
 # (sinon un cache écrit par une version antérieure serait relu tel quel).
@@ -79,9 +84,10 @@ def charger(res: str, syn: str, met: str) -> dict | None:
         return None
     try:
         with gzip.open(chemin, "rb") as f:
-            bundle = pickle.load(f)
-    except Exception:
-        return None  # cache corrompu → reparse
+            bundle = charger_securise(f)   # dé-pickle restreint (cf. core.pickle_securise)
+    except Exception as e:
+        logger.debug("Cache disque illisible (%s) → reparsing : %s", chemin.name, e)
+        return None  # cache corrompu / global refusé → reparse
     if not isinstance(bundle, dict) or bundle.get("format_version") != FORMAT_VERSION:
         return None
     return bundle
@@ -106,8 +112,8 @@ def ecrire(res: str, syn: str, met: str, df_horaire, df_synthese, df_meteo,
             pickle.dump(bundle, f, protocol=pickle.HIGHEST_PROTOCOL)
         os.replace(tmp, chemin)
         _purge_lru()
-    except Exception:
-        pass  # échec d'écriture non bloquant
+    except Exception as e:
+        logger.debug("Écriture du cache disque impossible (non bloquant) : %s", e)
 
 
 def _purge_lru() -> None:

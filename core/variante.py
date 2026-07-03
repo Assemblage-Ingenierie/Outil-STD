@@ -123,6 +123,16 @@ class Variante:
         except Exception:
             return id(config)
 
+    @staticmethod
+    def _moyenne_ponderee(somme_ponderee: float, somme_poids: float,
+                          valeurs_simples: list) -> float:
+        """Moyenne pondérée (somme_ponderee / somme_poids) si des poids existent,
+        sinon moyenne simple des valeurs (NaN ignorés). NaN si rien d'exploitable."""
+        if somme_poids > 0:
+            return somme_ponderee / somme_poids
+        vals = [x for x in valeurs_simples if x == x]
+        return float(np.mean(vals)) if vals else np.nan
+
     def __post_init__(self):
         if not self.zones and 'zones' in self.df_horaire.attrs:
             self.zones = self.df_horaire.attrs['zones']
@@ -606,21 +616,13 @@ class Variante:
             h1, o1 = self._compte_hors_occupe(zone, config, 1.0, methode)
             tot_hors_1 += h1; tot_occ_1 += o1
 
-        # T moyenne pondérée surface ; repli moyenne simple si pas de surfaces
-        if somme_surf_pour_tmoy > 0:
-            t_moy = somme_tmoy_surf / somme_surf_pour_tmoy
-        else:
-            moys = [self.stats_temp(z)['t_moy'] for z in zones]
-            moys = [m for m in moys if m == m]
-            t_moy = float(np.mean(moys)) if moys else np.nan
-
-        # HR moyenne pondérée surface ; repli moyenne simple si pas de surfaces
-        if somme_surf_pour_hrmoy > 0:
-            hr_moy = somme_hrmoy_surf / somme_surf_pour_hrmoy
-        else:
-            hr_moys = [self.stats_hr(z)['hr_moy'] for z in zones]
-            hr_moys = [m for m in hr_moys if m == m]
-            hr_moy = float(np.mean(hr_moys)) if hr_moys else np.nan
+        # Moyennes pondérées surface ; repli moyenne simple si pas de surfaces.
+        t_moy = self._moyenne_ponderee(
+            somme_tmoy_surf, somme_surf_pour_tmoy,
+            [self.stats_temp(z)['t_moy'] for z in zones])
+        hr_moy = self._moyenne_ponderee(
+            somme_hrmoy_surf, somme_surf_pour_hrmoy,
+            [self.stats_hr(z)['hr_moy'] for z in zones])
 
         result = {
             'Surface totale (m²)': round(surf_tot, 1) if surf_tot else np.nan,

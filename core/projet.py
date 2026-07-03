@@ -15,6 +15,7 @@ import pickle
 from pathlib import Path
 
 from core.variante import Variante
+from core.pickle_securise import charger_securise
 
 FORMAT_VERSION = 1
 EXTENSION = ".stdproj"
@@ -72,7 +73,7 @@ def charger_projet(chemin: str | Path) -> dict:
     """
     chemin = Path(chemin)
     with gzip.open(chemin, "rb") as f:
-        bundle = pickle.load(f)
+        bundle = charger_securise(f)   # dé-pickle restreint (cf. core.pickle_securise)
 
     variantes = []
     for vs in bundle.get("variantes", []):
