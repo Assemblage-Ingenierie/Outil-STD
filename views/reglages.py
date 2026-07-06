@@ -279,7 +279,7 @@ def _section_ajout_variante():
 
         if st.button("📂 Résultats (.slk)", key="btn_pick_resultats", width='stretch'):
             c = choisir_fichier("Sélectionner le fichier Résultats",
-                                [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
+                                [("Fichiers Pléiades", "*.slk *.csv"), ("Tous", "*.*")])
             if c:
                 ss.sel_resultats = c
                 st.rerun()
@@ -288,7 +288,7 @@ def _section_ajout_variante():
 
         if st.button("📂 Synthèse (.slk)", key="btn_pick_synthese", width='stretch'):
             c = choisir_fichier("Sélectionner le fichier Synthèse",
-                                [("Fichiers Pléiades", "*.slk"), ("Tous", "*.*")])
+                                [("Fichiers Pléiades", "*.slk *.csv"), ("Tous", "*.*")])
             if c:
                 ss.sel_synthese = c
                 st.rerun()

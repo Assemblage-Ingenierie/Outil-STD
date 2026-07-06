@@ -11,3 +11,6 @@ build/
 *.slk
 *.try
 *.TRY
+*.csv
+*.CSV
+*.stdproj

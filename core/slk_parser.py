@@ -31,6 +31,16 @@ GROUPES_REQUIS = [
     "Apports occupants (W)",
 ]
 
+# Colonnes globales repérées PAR NOM (leur libellé de type Y1/1re ligne d'entête).
+# La structure varie selon le paramétrage Pléiades : certains exports n'ont pas
+# Theta rm / Saison. Partagé avec core.csv_parser (même sémantique SLK ↔ CSV).
+GLOBALES_NOMS = {
+    "Températures": "T_ext",
+    "Température extérieure": "T_ext",
+    "Theta rm": "theta_rm",
+    "Saison": "saison",
+}
+
 
 class FichierInvalideError(ValueError):
     """Fichier .slk d'un format inattendu (export réduit, fichier inversé…)."""
@@ -158,13 +168,7 @@ def parse_resultats(filepath: str | Path) -> pd.DataFrame:
     #    le paramétrage Pléiades : certains exports n'ont pas Theta rm / Saison,
     #    auquel cas les températures de zones commencent dès la colonne 5).
     #    Col 1=mois, 2=jour, 3=heure sont fixes ; les autres globales sont
-    #    repérées par leur libellé Y1 unique.
-    GLOBALES_NOMS = {
-        "Températures": "T_ext",
-        "Température extérieure": "T_ext",
-        "Theta rm": "theta_rm",
-        "Saison": "saison",
-    }
+    #    repérées par leur libellé Y1 unique (GLOBALES_NOMS, module).
     cols_globales = {1, 2, 3}            # mois, jour, heure
     col_par_global: dict[str, int] = {}  # ex. {'T_ext': 4, 'theta_rm': 5, ...}
     for col, type_name in types_col.items():
