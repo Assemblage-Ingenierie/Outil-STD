@@ -754,6 +754,23 @@ class Variante:
         return rows
 
 
+def _parse_resultats_auto(path):
+    """Parse un fichier résultats en choisissant le parser selon l'extension :
+    ``.csv`` → parser CSV Pléiades ; sinon → parser SYLK (.slk)."""
+    if str(path).lower().endswith(".csv"):
+        from core import csv_parser
+        return csv_parser.parse_resultats(path)
+    return parse_resultats(path)
+
+
+def _parse_synthese_auto(path):
+    """Idem pour le fichier de synthèse (CSV ou SYLK)."""
+    if str(path).lower().endswith(".csv"):
+        from core import csv_parser
+        return csv_parser.parse_synthese(path)
+    return parse_synthese(path)
+
+
 def charger_variante(
     nom: str,
     fichier_resultats: str,
@@ -787,9 +804,9 @@ def charger_variante(
         return Variante(nom=nom, df_horaire=df_h, df_synthese=df_s, df_meteo=df_m,
                         zones=zones, meteo_nom=meteo_nom)
 
-    # --- cache miss : parsing complet ---
-    df_h = parse_resultats(fichier_resultats)
-    df_s = parse_synthese(fichier_synthese)
+    # --- cache miss : parsing complet (SYLK .slk ou CSV Pléiades) ---
+    df_h = _parse_resultats_auto(fichier_resultats)
+    df_s = _parse_synthese_auto(fichier_synthese)
     meteo_nom = ""
     if fichier_meteo and Path(fichier_meteo).exists():
         df_m = parse_try(fichier_meteo)
