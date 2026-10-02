@@ -5,7 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from config.charte import ROUGE, get_layout, finalize_fig, bar_labels
-from views.widgets import persist_multiselect, persist_selectbox, show_plotly
+from views.widgets import persist_multiselect, persist_selectbox, show_plotly, degrade
 
 
 def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
@@ -78,7 +78,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
     _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
     st.dataframe(
         df_comp.style.format(cols_pct, na_rep='NA', decimal=_dec, thousands=' ', precision=1)
-                     .background_gradient(subset=cols_couleur, cmap='YlOrRd')
+                     .apply(degrade, subset=cols_couleur)
                      .apply(_style_na, subset=cols_pct_list),
         width='stretch',
         height=min(600, 60 + 35 * len(df_comp)),
@@ -122,7 +122,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
             st.dataframe(
                 df_en.style.format({'Surface (m²)': '{:.0f}', **{c: '{:.1f} %' for c in col_pct}},
                                    na_rep='NA', decimal=_dec, thousands=' ')
-                .background_gradient(subset=col_pct, cmap='YlOrRd'),
+                .apply(degrade, subset=col_pct),
                 width='stretch', hide_index=True,
                 height=min(600, 60 + 35 * len(df_en)),
             )

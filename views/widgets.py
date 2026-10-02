@@ -10,7 +10,44 @@ Les sélections sont ainsi partagées entre les vues ET réutilisées par
 l'export du rapport Word (pas de double saisie).
 """
 from __future__ import annotations
+import numpy as np
 import streamlit as st
+
+# Palette ColorBrewer YlOrRd (9 classes) — identique au cmap matplotlib 'YlOrRd'.
+_YLORRD = np.array([
+    (255, 255, 204), (255, 237, 160), (254, 217, 118), (254, 178, 76), (253, 141, 60),
+    (252, 78, 42), (227, 26, 28), (189, 0, 38), (128, 0, 38)], dtype=float)
+
+
+def degrade(col):
+    """Dégradé jaune → rouge par colonne, à utiliser via ``Styler.apply(degrade,
+    subset=...)``. Remplace ``Styler.background_gradient`` (cmap 'YlOrRd') qui
+    exige matplotlib (exclu de l'exécutable). Même rendu : normalisation min-max
+    par colonne, texte blanc sur fond sombre, NaN / non numérique sans style."""
+    import pandas as pd
+    v = pd.to_numeric(pd.Series(col), errors='coerce').to_numpy(dtype=float)
+    ok = ~np.isnan(v)
+    if not ok.any():
+        return [''] * len(v)
+    lo, hi = np.nanmin(v), np.nanmax(v)
+    t = np.zeros(len(v)) if hi == lo else (np.where(ok, v, lo) - lo) / (hi - lo)
+    pos = t * (len(_YLORRD) - 1)
+    i0 = np.clip(np.floor(pos).astype(int), 0, len(_YLORRD) - 2)
+    frac = (pos - i0)[:, None]
+    rgb = _YLORRD[i0] * (1 - frac) + _YLORRD[i0 + 1] * frac
+    # Luminance relative (seuil 0,408 = celui de pandas background_gradient)
+    lin = rgb / 255.0
+    lin = np.where(lin <= 0.04045, lin / 12.92, ((lin + 0.055) / 1.055) ** 2.4)
+    lum = lin @ np.array([0.2126, 0.7152, 0.0722])
+    out = []
+    for k in range(len(v)):
+        if not ok[k]:
+            out.append('')
+            continue
+        r, g, b = (int(round(c)) for c in rgb[k])
+        texte = '#f1f1f1' if lum[k] < 0.408 else '#000000'
+        out.append(f'background-color: #{r:02x}{g:02x}{b:02x}; color: {texte};')
+    return out
 
 
 def show_plotly(fig, **kwargs):
