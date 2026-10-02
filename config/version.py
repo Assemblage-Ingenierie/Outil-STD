@@ -12,8 +12,8 @@ Affiché dans l'onglet Réglages (pied de page).
 """
 from __future__ import annotations
 
-VERSION = "1.1.0"
-DATE_MAJ = "2026-07-02"
+VERSION = "1.2.0"
+DATE_MAJ = "2026-10-02"
 
 
 def version_affichee() -> str:

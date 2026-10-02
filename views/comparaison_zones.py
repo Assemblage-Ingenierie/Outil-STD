@@ -91,6 +91,47 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
                        file_name=f"comparaison_zones_{var.nom}.csv",
                        mime="text/csv", key="dl_comp")
 
+    # -- Confort adaptatif EN 16798-1 --
+    st.subheader("Confort adaptatif EN 16798-1")
+    from views.focus_zone import choisir_categorie_en16798
+    from core import confort_en16798
+    cat = choisir_categorie_en16798()
+    t_ext = var.t_ext_horaire()
+    if not len(t_ext):
+        st.info("Confort adaptatif indisponible : aucune température extérieure "
+                "(météo .try ou colonne T extérieure des résultats).")
+    else:
+        zones_en = []
+        for zone in zones_sel:
+            t = var.col_temp(zone)
+            occ = var.col_apports_occupants(zone)
+            if t.empty or occ.empty:
+                continue
+            n = min(len(t), len(occ))
+            syn = var.synthese_zone(zone)
+            zones_en.append({
+                'zone': zone, 't_int': t.iloc[:n],
+                'occupied': (occ.values[:n] > 0) & var.masque_periode(n),
+                'surface': syn.get('surface_m2', np.nan) if syn else np.nan,
+            })
+        df_en = confort_en16798.tableau_multizones(zones_en, t_ext, cat)
+        if df_en.empty:
+            st.info("Aucune zone exploitable (température ou occupation manquante).")
+        else:
+            col_pct = [c for c in df_en.columns if c.endswith('(%)')]
+            st.dataframe(
+                df_en.style.format({'Surface (m²)': '{:.0f}', **{c: '{:.1f} %' for c in col_pct}},
+                                   na_rep='NA', decimal=_dec, thousands=' ')
+                .background_gradient(subset=col_pct, cmap='YlOrRd'),
+                width='stretch', hide_index=True,
+                height=min(600, 60 + 35 * len(df_en)),
+            )
+            st.caption("Heures évaluées = heures occupées où θrm est dans le domaine "
+                       "d'application (10–30 °C). « NA » : aucune heure évaluée.")
+            st.download_button("⬇️ Exporter CSV", data=df_en.to_csv(index=False).encode('utf-8-sig'),
+                               file_name=f"en16798_zones_{var.nom}.csv",
+                               mime="text/csv", key="dl_comp_en16798")
+
     st.divider()
 
     # -- Températures min/moy/max en barres --

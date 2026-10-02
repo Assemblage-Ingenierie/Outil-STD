@@ -7,7 +7,7 @@ import numpy as np
 
 from core.slk_parser import parse_resultats, parse_synthese
 from core.try_parser import parse_try, humidite_absolue
-from core import confort
+from core import confort, confort_en16798
 
 
 def construire_horodatage(df_horaire: pd.DataFrame) -> pd.DatetimeIndex:
@@ -56,6 +56,8 @@ class Variante:
     _plages_cache: dict = field(default_factory=dict, repr=False, compare=False)
     # Index datetime horaire, construit une seule fois (invariant).
     _horodate_cache: object = field(default=None, repr=False, compare=False)
+    # Cache du confort adaptatif EN 16798 (clé = zone, catégorie, periode).
+    _en16798_cache: dict = field(default_factory=dict, repr=False, compare=False)
 
     def a_meteo(self) -> bool:
         return self.df_meteo is not None and not self.df_meteo.empty
@@ -492,6 +494,49 @@ class Variante:
         exempt = confort.masque_chauffe_sous_consigne(T, self._est_chauffe(zone, n), config, methode)
         garde = (~exempt) & self.masque_periode(n)
         return {'T': T[garde], 'w': W[garde], 'saison': np.asarray(saison)[garde]}
+
+    # ------------------------------------------------------------------
+    # Confort adaptatif EN 16798-1
+    # ------------------------------------------------------------------
+
+    def t_ext_horaire(self) -> np.ndarray:
+        """T extérieure horaire : météo .try si chargée, sinon colonne T_ext des
+        résultats Pléiades. Tableau vide si aucune source exploitable."""
+        if self.a_meteo() and 'T_ext' in self.df_meteo:
+            return self.df_meteo['T_ext'].to_numpy(dtype=float)
+        if 'T_ext' in self.df_horaire:
+            t = self.df_horaire['T_ext'].to_numpy(dtype=float)
+            if not np.isnan(t).all():
+                return t
+        return np.array([], dtype=float)
+
+    def en16798(self, zone: str, category: int = confort_en16798.CATEGORIE_DEFAUT) -> dict | None:
+        """
+        Confort adaptatif EN 16798-1 d'une zone (cf. core/confort_en16798.py).
+        Heures occupées = apports occupants > 0, restreintes à la période
+        d'analyse active. θrm est calculée sur l'année entière (indépendamment
+        de la période). None si T intérieure, occupation ou T extérieure absente.
+        Mémoïsé par (zone, catégorie, période).
+        """
+        key = (zone, int(category), self.periode)
+        if key in self._en16798_cache:
+            return self._en16798_cache[key]
+        t = self.col_temp(zone)
+        occ = self.col_apports_occupants(zone)
+        t_ext = self.t_ext_horaire()
+        res = None
+        if not t.empty and not occ.empty and len(t_ext):
+            # θrm : commune à toutes les zones de la variante → calculée une fois.
+            trm = self._en16798_cache.get('_trm')
+            if trm is None:
+                trm = confort_en16798.running_mean_horaire(t_ext)
+                self._en16798_cache['_trm'] = trm
+            n = min(len(t), len(occ))
+            occupe = (occ.values[:n] > 0) & self.masque_periode(n)
+            res = confort_en16798.compute_en16798_adaptive(
+                t.iloc[:n], t_ext, occupe, category, trm_hourly=trm)
+        self._en16798_cache[key] = res
+        return res
 
     def synthese_zone(self, zone: str) -> dict | None:
         """Retourne la ligne de synthèse annuelle pour une zone (lookup O(1))."""
