@@ -23,6 +23,7 @@ from views.reglages import render_reglages
 from core.file_picker import choisir_fichier, enregistrer_fichier
 from core import projet as projet_io
 import config.charte as charte
+from config import i18n
 
 # -- Chemins --
 BASE_DIR = Path(__file__).parent
@@ -81,6 +82,8 @@ st.markdown("""
 
 # -- Mode sombre : synchroniser le singleton charte au début de chaque re-run --
 charte.set_dark_mode(st.session_state.get('cfg_dark_mode', False))
+# -- Langue des graphiques (FR / EN) : même principe que le mode sombre --
+i18n.set_langue(st.session_state.get('cfg_langue_graphiques', 'fr'))
 
 # -- État de session --
 if 'variantes' not in st.session_state:
@@ -179,6 +182,7 @@ with st.sidebar:
                                        'jour_fin': st.session_state.get('cfg_jour_fin'),
                                        'periodes_on': st.session_state.get('cfg_periodes_on'),
                                        'periodes': st.session_state.get('cfg_periodes'),
+                                       'langue_graphiques': st.session_state.get('cfg_langue_graphiques', 'fr'),
                                        'config': st.session_state.config_projet},
                             'variantes': st.session_state.variantes,
                             'ameliorations': st.session_state.get('ameliorations'),
@@ -225,6 +229,9 @@ with st.sidebar:
                             "COCO (tropical)" if prm['methode'] == 'coco' else "Givoni")
                     if 'periode' in prm:
                         st.session_state['cfg_periode'] = prm['periode']
+                    if prm.get('langue_graphiques') in i18n.LANGUES:
+                        st.session_state['cfg_langue_graphiques'] = prm['langue_graphiques']
+                        i18n.set_langue(prm['langue_graphiques'])
                     if prm.get('periode_label'):
                         st.session_state['cfg_periode_label'] = prm['periode_label']
                     st.session_state['cfg_nom_projet'] = charge.get('nom_projet', '')
@@ -239,7 +246,7 @@ with st.sidebar:
                               'cfg_nom_projet_w', 'cfg_seuil_t0_w', 'cfg_seuil_t1_w',
                               'cfg_seuil_t2_w', 'cfg_methode_label_w', 'cfg_periode_label_w',
                               'cfg_jour_debut_w', 'cfg_jour_fin_w', 'cfg_periodes_on_w',
-                              'cfg_n_periodes'):
+                              'cfg_n_periodes', 'cfg_langue_graphiques_w'):
                         st.session_state.pop(k, None)
                     # Widgets de lignes de périodes (nombre variable) à réinitialiser
                     for k in [k for k in list(st.session_state.keys())

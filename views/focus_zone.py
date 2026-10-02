@@ -3,7 +3,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from views.widgets import persist_multiselect, persist_selectbox, show_plotly, degrade
+from config.i18n import t, nombre
+
+from views.widgets import (persist_multiselect, persist_selectbox, persist_radio,
+                           persist_checkbox, show_plotly, degrade)
 
 
 @st.fragment
@@ -72,7 +75,7 @@ def categorie_en16798_courante() -> int:
 
 def _section_adaptatif(variantes_sel, zone):
     """Onglet confort adaptatif EN 16798-1 : tableau par variante + diagramme."""
-    from charts.adaptatif import creer_diagramme_adaptatif
+    from charts.adaptatif import creer_scatter_adaptatif
 
     st.subheader(f"Confort adaptatif EN 16798-1 — {zone}")
     with st.expander("ℹ️ À propos de l'indicateur", expanded=True):
@@ -98,17 +101,75 @@ def _section_adaptatif(variantes_sel, zone):
             "Contrairement au diagramme de Givoni, ce modèle ne tient compte **que de la "
             "température**, pas de l'humidité. Il n'est pas pertinent pour juger une zone "
             "climatisée : celle-ci doit être évaluée avec des seuils fixes.")
-    cat = choisir_categorie_en16798()
-    rom = ["I", "II", "III"][cat - 1]
+    if not any(v.en16798(zone) is not None for v in variantes_sel):
+        st.info("Confort adaptatif indisponible : il faut la température intérieure, "
+                "les apports occupants et une température extérieure (météo .try ou "
+                "colonne T extérieure des résultats).")
+        return
 
-    rows, res_par_var = [], []
-    for v in variantes_sel:
+    # -- Réglages d'affichage --
+    c1, c2, c3 = st.columns([1, 1, 2])
+    with c1:
+        cat = choisir_categorie_en16798()
+    rom = ["I", "II", "III"][cat - 1]
+    disponibles = [v for v in variantes_sel if v.en16798(zone, cat) is not None]
+    with c2:
+        mode = (persist_radio("Affichage", ["Une variante", "Variantes superposées"],
+                              "cfg_en16798_mode", horizontal=False)
+                if len(disponibles) > 1 else "Une variante")
+    with c3:
+        if mode == "Une variante":
+            nom_v = persist_selectbox("Variante affichée", [v.nom for v in disponibles],
+                                      "sel_en16798_variante")
+            affichees = [v for v in disponibles if v.nom == nom_v]
+        else:
+            affichees = disponibles
+        o1, o2 = st.columns(2)
+        with o1:
+            bandes = persist_checkbox("Bandes Cat. I / II / III", "cfg_en16798_bandes",
+                                      default=False)
+        with o2:
+            gris = persist_checkbox("Heures non évaluées (gris)", "cfg_en16798_gris",
+                                    default=True, disabled=(mode != "Une variante"),
+                                    help="Heures inoccupées ou θrm hors domaine, en arrière-plan "
+                                         "(vue une variante uniquement).")
+
+    # -- Métriques --
+    def _pct(p):
+        return f"{p:.1f} %".replace('.', ',') if p == p else "NA"
+
+    autres = [c for c in (1, 2, 3) if c != cat]
+    for v in affichees:
+        r = v.en16798(zone, cat)
+        if len(affichees) > 1:
+            st.markdown(f"**{v.nom}**")
+        m1, m2, m3, m4 = st.columns([1.2, 1, 1, 1])
+        m1.metric(f"Inconfort Cat. {rom}", _pct(r['discomfort_pct']))
+        m2.metric("Heures d'inconfort", f"{r['discomfort_hours']} / {r['total_occupied_valid']} h",
+                  help="Heures hors bande / heures occupées évaluées.")
+        m3.metric("dont chaud / froid",
+                  f"{r['discomfort_hours_warm']} / {r['discomfort_hours_cold']} h")
+        m4.markdown("<small>" + "<br>".join(
+            f"Cat. {['I', 'II', 'III'][c - 1]} : <b>{_pct(v.en16798(zone, c)['discomfort_pct'])}</b>"
+            for c in autres) + "</small>", unsafe_allow_html=True)
+
+    # -- Nuage --
+    series = [{'label': v.nom, 'res': v.en16798(zone, cat), 't_int': v.col_temp(zone),
+               'horodatage': v.horodatage()} for v in affichees]
+    if len(affichees) == 1:
+        p = series[0]['res']['discomfort_pct']
+        titre = t("{zone} — {variante} — EN 16798-1 Cat. {c} : {pct} d'inconfort",
+                  zone=zone, variante=affichees[0].nom, c=rom,
+                  pct=f"{nombre(p, '.1f')} %" if p == p else "NA")
+    else:
+        titre = t("{zone} — variantes superposées — EN 16798-1 Cat. {c}", zone=zone, c=rom)
+    fig = creer_scatter_adaptatif(series, titre, bandes_123=bandes, afficher_gris=gris)
+    show_plotly(fig, width='stretch', key="en16798_scatter")
+
+    # -- Tableau comparatif des variantes --
+    rows = []
+    for v in disponibles:
         res = v.en16798(zone, cat)
-        if res is None:
-            continue
-        res_par_var.append((v, res))
-        pct_cats = {f'% inconfort Cat.{["I", "II", "III"][c - 1]}': v.en16798(zone, c)['discomfort_pct']
-                    for c in (1, 2, 3)}
         rows.append({
             'Variante': v.nom,
             'Heures occupées': res['total_occupied'],
@@ -117,14 +178,9 @@ def _section_adaptatif(variantes_sel, zone):
             f'Inconfort Cat.{rom} (%)': res['discomfort_pct'],
             'dont chaud (h)': res['discomfort_hours_warm'],
             'dont froid (h)': res['discomfort_hours_cold'],
-            **pct_cats,
+            **{f'% inconfort Cat.{["I", "II", "III"][c - 1]}': v.en16798(zone, c)['discomfort_pct']
+               for c in (1, 2, 3)},
         })
-    if not rows:
-        st.info("Confort adaptatif indisponible : il faut la température intérieure, "
-                "les apports occupants et une température extérieure (météo .try ou "
-                "colonne T extérieure des résultats).")
-        return
-
     df = pd.DataFrame(rows).set_index('Variante')
     cols_pct = [c for c in df.columns if '(%)' in c or c.startswith('%')]
     _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
@@ -136,11 +192,6 @@ def _section_adaptatif(variantes_sel, zone):
     )
     st.download_button("⬇️ Exporter (CSV)", data=df.to_csv().encode('utf-8-sig'),
                        file_name=f"en16798_{zone}.csv", mime="text/csv", key="dl_en16798")
-
-    for v, res in res_par_var:
-        fig = creer_diagramme_adaptatif(res, v.col_temp(zone),
-                                        titre=f"EN 16798-1 — {zone} · {v.nom}")
-        show_plotly(fig, width='stretch', key=f"en16798_{v.nom}")
 
 
 def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
@@ -298,7 +349,8 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             if len(series) > 1:
                 st.markdown("**Toutes les variantes superposées**")
                 fig_all = creer_givoni(series, config=config, methode=methode,
-                                       titre=f"Diagramme de {nom_modele} — {zone} (toutes variantes)",
+                                       titre=t("Diagramme de {nom} — {zone} (toutes variantes)",
+                                             nom=nom_modele, zone=zone),
                                        par_saison=par_saison, note_chauffe=note_chauffe)
                 show_plotly(fig_all, width='stretch', key="giv_all")
 
@@ -306,7 +358,8 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             st.markdown("**Par variante**" if len(series) > 1 else "")
             for s in series:
                 fig_one = creer_givoni([s], config=config, methode=methode,
-                                       titre=f"Diagramme de {nom_modele} — {zone} · {s['label']}",
+                                       titre=t("Diagramme de {nom} — {zone} · {variante}",
+                                             nom=nom_modele, zone=zone, variante=s['label']),
                                        par_saison=par_saison, note_chauffe=note_chauffe)
                 show_plotly(fig_one, width='stretch', key=f"giv_{s['label']}")
 
@@ -324,8 +377,8 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
                         continue
                     pts['label'] = v.nom
                     fig_per = creer_givoni([pts], config=config, methode=methode,
-                                           titre=f"Diagramme de {nom_modele} — {zone} · "
-                                                 f"{v.nom} (par période)",
+                                           titre=t("Diagramme de {nom} — {zone} · {variante} (par période)",
+                                                 nom=nom_modele, zone=zone, variante=v.nom),
                                            par_periode=True, note_chauffe=note_chauffe)
                     show_plotly(fig_per, width='stretch', key=f"giv_per_{v.nom}")
 

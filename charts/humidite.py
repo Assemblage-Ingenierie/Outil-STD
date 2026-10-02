@@ -7,6 +7,7 @@ from config.charte import (
     COULEURS_VARIANTES,
     get_layout, grille_color, ligne_ext_color, finalize_fig, bar_labels,
 )
+from config.i18n import t
 
 # Bande de confort hygrométrique usuelle (plage saine recommandée intérieur)
 HR_CONFORT_MIN = 40.0
@@ -64,7 +65,7 @@ def graphique_hr_horaire(
     fig.add_trace(go.Scatter(
         x=[None], y=[None], mode='markers',
         marker=dict(size=11, color=VERT_CONFORT, opacity=0.45, symbol='square'),
-        name=f'Confort {hr_min:.0f}–{hr_max:.0f} %', hoverinfo='skip',
+        name=t('Confort {a}–{b} %', a=f'{hr_min:.0f}', b=f'{hr_max:.0f}'), hoverinfo='skip',
     ))
 
     interieures = [v for v in variantes if not v.col_hr(zone).empty]
@@ -90,23 +91,23 @@ def graphique_hr_horaire(
                 fig.add_trace(go.Scatter(
                     x=jmin.index, y=jmin.values, mode='lines', line=dict(width=0),
                     fill='tonexty', fillcolor=_rgba(color, 0.15), hoverinfo='skip',
-                    name='Min–max journalier', showlegend=True))
+                    name=t('Min–max journalier'), showlegend=True))
             fig.add_trace(go.Scatter(
                 x=jm.index, y=jm.values, mode='lines', name=var.nom,
                 line=dict(color=color, width=1.6), connectgaps=False,
-                hovertemplate='%{x|%d %b}<br>HR moy=%{y:.0f}%<extra>' + var.nom + '</extra>'))
+                hovertemplate='%{x|%d %b}<br>' + t('HR moy') + '=%{y:.0f}%<extra>' + var.nom + '</extra>'))
         else:
             fig.add_trace(go.Scatter(
                 x=ts.index, y=ts.values, mode='lines', name=var.nom, opacity=0.85,
                 line=dict(color=color, width=0.8), connectgaps=False,
-                hovertemplate='%{x|%d %b %H:%M}<br>HR=%{y:.0f}%<extra>' + var.nom + '</extra>'))
+                hovertemplate='%{x|%d %b %H:%M}<br>' + t('HR') + '=%{y:.0f}%<extra>' + var.nom + '</extra>'))
 
     # -- HR extérieure : une courbe pointillée par fichier météo distinct --
     meteos_vus = {}
     for var in variantes:
         if var.df_meteo.empty or 'HR_ext' not in var.df_meteo.columns:
             continue
-        nom = var.meteo_affiche() or "météo"
+        nom = var.meteo_affiche() or t("météo")
         meteos_vus.setdefault(nom, var)
     multi = len(meteos_vus) > 1
     teintes_ext = [ligne_ext_color()] if not multi else ["#455A64", "#8E24AA", "#00897B", "#6D4C41"]
@@ -116,17 +117,17 @@ def graphique_hr_horaire(
         x, y = _xy_zone(var, hr_ext, n, zone, occupation_seulement)
         ts = pd.Series(y, index=x)
         yy = ts.resample('D').mean() if journalier else ts
-        label = f'HR ext — {nom}' if multi else 'HR extérieure'
+        label = t('HR ext — {nom}', nom=nom) if multi else t('HR extérieure')
         fig.add_trace(go.Scatter(
             x=yy.index, y=yy.values, mode='lines', name=label, connectgaps=False,
             line=dict(color=teintes_ext[j % len(teintes_ext)], width=1.2, dash='dot'),
             hovertemplate='%{x|%d %b}<br>HR_ext=%{y:.0f}%<extra>' + label + '</extra>'))
 
-    suffixe = " (moyenne journalière)" if journalier else " (horaire)"
+    suffixe = t(" (moyenne journalière)") if journalier else t(" (horaire)")
     # type='date' explicite : sans ça, plotly.js infère le type d'axe depuis
     # la 1re trace (le marqueur de légende « Confort », x=[None]) → axe linéaire
     # -1..6 et toutes les courbes datées disparaissent.
-    xaxis = dict(title='Date', type='date', gridcolor=grille_color())
+    xaxis = dict(title=t('Date'), type='date', gridcolor=grille_color())
     height = 400
     if not journalier:
         # Mode horaire : ~8 760 pts/an illisibles d'un bloc → fenêtre initiale
@@ -145,18 +146,18 @@ def graphique_hr_horaire(
                 xaxis['range'] = [x0.isoformat(), x1.isoformat()]
         xaxis['rangeslider'] = dict(visible=True, thickness=0.06)
         xaxis['rangeselector'] = dict(buttons=[
-            dict(count=1, label='1 mois', step='month', stepmode='backward'),
-            dict(count=3, label='3 mois', step='month', stepmode='backward'),
-            dict(step='all', label='Année'),
+            dict(count=1, label=t('1 mois'), step='month', stepmode='backward'),
+            dict(count=3, label=t('3 mois'), step='month', stepmode='backward'),
+            dict(step='all', label=t('Année')),
         ])
         height = 480
     layout = get_layout()
     layout.update(
-        title=titre or f'Humidité relative — {zone}{suffixe}',
+        title=titre or t('Humidité relative — {zone}{suffixe}', zone=zone, suffixe=suffixe),
         xaxis=xaxis,
         # Marge haute : l'HR plafonne physiquement à 100 % (locaux humides),
         # le range va jusqu'à 105 pour décoller les courbes du bord supérieur.
-        yaxis=dict(title='HR (%)', gridcolor=grille_color(), range=[0, 105]),
+        yaxis=dict(title=t('HR (%)'), gridcolor=grille_color(), range=[0, 105]),
         height=height,
     )
     fig.update_layout(**layout)
@@ -201,13 +202,13 @@ def heatmap_hr_jour_heure(
     fig = go.Figure(go.Heatmap(
         x=piv.columns, y=piv.index, z=piv.values,
         colorscale='YlGnBu', zmin=20, zmax=100,
-        colorbar=dict(title='HR %'),
-        hovertemplate='%{x|%d %b} · %{y}h<br>HR = %{z:.0f}%<extra></extra>'))
+        colorbar=dict(title=t('HR %')),
+        hovertemplate='%{x|%d %b} · %{y}h<br>' + t('HR') + ' = %{z:.0f}%<extra></extra>'))
     layout = get_layout()
     layout.update(
-        title=titre or f'HR horaire — {zone} · {var.nom} (jour × heure)',
-        xaxis=dict(title='Date', type='date'),
-        yaxis=dict(title='Heure', dtick=6, range=[-0.5, 23.5]),
+        title=titre or t('HR horaire — {zone} · {variante} (jour × heure)', zone=zone, variante=var.nom),
+        xaxis=dict(title=t('Date'), type='date'),
+        yaxis=dict(title=t('Heure'), dtick=6, range=[-0.5, 23.5]),
         height=360,
     )
     fig.update_layout(**layout)
@@ -231,18 +232,18 @@ def graphique_hr_min_moy_max(
             hr_moy.append(round(s['hr_moy'], 0))
             hr_max.append(round(s['hr_max'], 0))
         suffixe = f" — {var.nom}" if len(variantes) > 1 else ""
-        fig.add_trace(go.Bar(x=zones, y=hr_min, name=f"HR min{suffixe}",
+        fig.add_trace(go.Bar(x=zones, y=hr_min, name=f"{t('HR min')}{suffixe}",
                              marker=dict(color=color, opacity=0.45), **bar_labels(".0f")))
-        fig.add_trace(go.Bar(x=zones, y=hr_moy, name=f"HR moy{suffixe}",
+        fig.add_trace(go.Bar(x=zones, y=hr_moy, name=f"{t('HR moy')}{suffixe}",
                              marker=dict(color=color, opacity=0.7), **bar_labels(".0f")))
-        fig.add_trace(go.Bar(x=zones, y=hr_max, name=f"HR max{suffixe}",
+        fig.add_trace(go.Bar(x=zones, y=hr_max, name=f"{t('HR max')}{suffixe}",
                              marker=dict(color=color, opacity=1.0), **bar_labels(".0f")))
 
     layout = get_layout()
     layout.update(
-        title=titre or 'Humidité relative min / moyenne / max par zone',
-        xaxis=dict(title='Zone', tickangle=-30),
-        yaxis=dict(title='HR (%)', gridcolor=grille_color(), range=[0, 112]),
+        title=titre or t('Humidité relative min / moyenne / max par zone'),
+        xaxis=dict(title=t('Zone'), tickangle=-30),
+        yaxis=dict(title=t('HR (%)'), gridcolor=grille_color(), range=[0, 112]),
         barmode='group',
         height=440,
         uniformtext=dict(minsize=8, mode='hide'),

@@ -9,6 +9,7 @@ from config.charte import (
 )
 from core.try_parser import humidite_absolue
 from core import confort
+from config.i18n import t, nombre
 
 
 COULEUR_CHAUFFE = ROUGE            # rouge — saison de chauffe (chaud)
@@ -27,6 +28,17 @@ def _courbe_rh(rh: float) -> tuple[np.ndarray, np.ndarray]:
     w = humidite_absolue(T, rh)
     mask = w <= W_MAX_PLOT
     return T[mask], w[mask]
+
+
+def _label_zone(methode: str, v: float, label: str) -> str:
+    """Libellé de zone de confort dans la langue des graphiques (les libellés
+    de core.confort sont mis en cache en français)."""
+    if methode == "coco":
+        base, _, reste = label.rpartition(" (")
+        return f"{t(base)} ({reste}" if base else t(label)
+    if v == 0:
+        return t("Confort 0 m/s (repos)")
+    return t("Confort {v} m/s", v=nombre(v, ".1f"))
 
 
 def _classer_saison(saison_arr: np.ndarray) -> np.ndarray:
@@ -71,7 +83,7 @@ def creer_givoni(
         series = [series]
     if titre is None:
         nom = "COCO" if methode == "coco" else "Givoni"
-        titre = f"Diagramme de {nom} — Conditions intérieures"
+        titre = t("Diagramme de {nom} — Conditions intérieures", nom=nom)
 
     fig = go.Figure()
 
@@ -83,7 +95,7 @@ def creer_givoni(
     fig.add_trace(go.Scatter(
         x=T_sat, y=w_sat, mode="lines",
         line=dict(color=sat_color, width=2),
-        name="Saturation (HR 100 %)",
+        name=t("Saturation (HR 100 %)"),
         hovertemplate="Saturation<br>T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra></extra>",
     ))
     for rh in [20, 40, 60, 80]:
@@ -91,8 +103,8 @@ def creer_givoni(
         fig.add_trace(go.Scatter(
             x=T_rh, y=w_rh, mode="lines",
             line=dict(color=courbe_ref_color(), width=1.1, dash="dot"),
-            name=f"HR {rh} %", legendgroup="iso_rh", showlegend=False,
-            hovertemplate=f"HR {rh}%<br>T=%{{x:.1f}}°C<br>w=%{{y:.2f}} g/kg<extra></extra>",
+            name=t("HR {rh} %", rh=rh), legendgroup="iso_rh", showlegend=False,
+            hovertemplate=t("HR") + f" {rh}%<br>T=%{{x:.1f}}°C<br>w=%{{y:.2f}} g/kg<extra></extra>",
         ))
         if len(T_rh):
             fig.add_annotation(
@@ -112,13 +124,13 @@ def creer_givoni(
             x=T_z, y=W_z, mode="lines", fill="toself",
             fillcolor="rgba(46,204,113,0.04)",
             line=dict(color=couleur, width=1.0),
-            name=label, hoverinfo="skip", opacity=0.7,
+            name=_label_zone(methode, v, label), hoverinfo="skip", opacity=0.7,
         ))
         # Étiquette de vitesse d'air directement sur le graphe, au sommet droit
         # de la zone (couleur de la zone) — repère visuel demandé en plus de la légende.
         if len(T_z):
             i_bord = int(np.argmax(T_z))
-            v_txt = f"{v:.0f} m/s" if float(v).is_integer() else f"{v:.1f} m/s".replace('.', ',')
+            v_txt = f"{v:.0f} m/s" if float(v).is_integer() else f"{nombre(v, '.1f')} m/s"
             fig.add_annotation(
                 x=float(T_z[i_bord]), y=float(W_z[i_bord]), text=v_txt,
                 showarrow=False, xanchor="left", yanchor="middle", xshift=5,
@@ -142,7 +154,7 @@ def creer_givoni(
                 m = per == nom
                 if not m.any():
                     continue
-                label = str(nom) if str(nom) else "Hors période"
+                label = str(nom) if str(nom) else t("Hors période")
                 couleur = (COULEUR_INTERSAISON if not str(nom)
                            else COULEURS_VARIANTES[k % len(COULEURS_VARIANTES)])
                 fig.add_trace(go.Scatter(
@@ -155,9 +167,9 @@ def creer_givoni(
             # Coloration par saison
             sais = _classer_saison(np.asarray(s.get('saison', np.array([''] * len(T)))))
             cats = [
-                ("refroidissement", "Saison de refroidissement", COULEUR_REFROIDISSEMENT),
-                ("chauffe", "Saison de chauffe", COULEUR_CHAUFFE),
-                ("inter", "Hors saison de chauffe", COULEUR_INTERSAISON),
+                ("refroidissement", t("Saison de refroidissement"), COULEUR_REFROIDISSEMENT),
+                ("chauffe", t("Saison de chauffe"), COULEUR_CHAUFFE),
+                ("inter", t("Hors saison de chauffe"), COULEUR_INTERSAISON),
             ]
             for key, label, couleur in cats:
                 m = sais == key
@@ -174,7 +186,7 @@ def creer_givoni(
             fig.add_trace(go.Scatter(
                 x=T, y=w, mode="markers",
                 marker=dict(size=4, color=COULEUR_POINTS_UNIQUE, opacity=0.55),
-                name="Conditions intérieures",
+                name=t("Conditions intérieures"),
                 hovertemplate="T=%{x:.1f}°C<br>w=%{y:.2f} g/kg<extra></extra>",
             ))
     else:
@@ -195,8 +207,8 @@ def creer_givoni(
     layout = get_layout()
     layout.update(
         title=titre,
-        xaxis=dict(title="Température opérative (°C)", range=[T_MIN_PLOT, T_MAX_PLOT], gridcolor=grille_color()),
-        yaxis=dict(title="Humidité absolue (g/kg air sec)", range=[0, W_MAX_PLOT], gridcolor=grille_color()),
+        xaxis=dict(title=t("Température opérative (°C)"), range=[T_MIN_PLOT, T_MAX_PLOT], gridcolor=grille_color()),
+        yaxis=dict(title=t("Humidité absolue (g/kg air sec)"), range=[0, W_MAX_PLOT], gridcolor=grille_color()),
         legend=dict(itemsizing="constant"),
         height=620,
         margin=dict(l=60, r=30, t=60, b=120),
@@ -212,9 +224,8 @@ def creer_givoni(
             xref="paper", yref="paper", x=0.0, y=-0.155, xanchor="left", yanchor="top",
             showarrow=False, align="left",
             font=dict(size=10, color=annotation_color(), family=FONT_FAMILY),
-            text=(f"Hypothèse : les heures où le local est chauffé alors que T est sous la "
-                  f"borne basse de confort ({t_min:.0f} °C) sont exclues du diagramme et du "
-                  f"décompte d'inconfort (chauffer sous le minimum de confort = choix de "
-                  f"consigne, pas inconfort)."),
+            text=t("Hypothèse : les heures où le local est chauffé alors que T est sous la borne basse "
+                   "de confort ({t} °C) sont exclues du diagramme et du décompte d'inconfort (chauffer "
+                   "sous le minimum de confort = choix de consigne, pas inconfort).", t=f"{t_min:.0f}"),
         )
     return finalize_fig(fig)
