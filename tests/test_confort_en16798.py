@@ -165,3 +165,63 @@ def test_tableau_multizones():
     assert df.loc[1, "dont chaud (h)"] == 240
     assert np.isnan(df.loc[1, "Surface (m²)"])
     assert np.isnan(df.loc[2, "Inconfort Cat.II (%)"])
+
+
+# ----------------------------------------------------------------------
+# Graphiques (charts/adaptatif.py)
+# ----------------------------------------------------------------------
+def _serie(t_int_val, label="V", occ_debut=0):
+    t_int, t_ext, occ = _cas_simple(t_int_val)
+    t_int = t_int.copy()
+    t_int.iloc[::2] = 20.0                     # une heure sur deux sous la limite basse (21,4)
+    occ.iloc[:occ_debut] = False
+    r = en.compute_en16798_adaptive(t_int, t_ext, occ)
+    return {"label": label, "res": r, "t_int": t_int,
+            "horodatage": pd.date_range("2024-01-01", periods=len(t_int), freq="h")}
+
+
+def test_scatter_une_variante_traces_et_sous_echantillonnage():
+    from charts.adaptatif import creer_scatter_adaptatif
+    s = _serie(25.0, occ_debut=40)             # 40 h inoccupées → gris
+    fig = creer_scatter_adaptatif([s], "titre", afficher_gris=True, max_points=10)
+    noms = [t.name for t in fig.data]
+    assert any(n.startswith("Non évaluées (40 h)") for n in noms)
+    assert any(n.startswith("Confortable (100 h)") for n in noms)
+    assert any(n.startswith("Trop froid (100 h)") for n in noms)
+    par_nom = {t.name.split(" (")[0]: t for t in fig.data}
+    assert len(par_nom["Confortable"].x) <= 10          # sous-échantillonné
+    assert len(par_nom["Trop froid"].x) == 100          # inconfort : tout affiché
+    assert par_nom["Trop froid"].customdata[0][0] == "02/01 16h"   # 1re heure occupée = h 40
+    # Sans gris + bandes I/II/III
+    fig = creer_scatter_adaptatif([s], "t", bandes_123=True, afficher_gris=False)
+    noms = [t.name for t in fig.data]
+    assert not any(n.startswith("Non évaluées") for n in noms)
+    assert sum(n.startswith("Bande Cat.") for n in noms) == 3
+
+
+def test_scatter_superposition_formes_differentes():
+    from charts.adaptatif import creer_scatter_adaptatif
+    series = [_serie(25.0, f"V{i}") for i in range(3)]
+    fig = creer_scatter_adaptatif(series, "t")
+    pts = [t for t in fig.data if t.mode == "markers"]
+    assert len(pts) == 3
+    assert len({t.marker.symbol for t in pts}) == 3
+    assert len({t.marker.color for t in pts}) == 3
+
+
+def test_barres_tri_couleurs_et_seuil():
+    from charts.adaptatif import creer_barres_en16798, couleur_palier
+    df = pd.DataFrame({"zone": ["A", "B", "C", "D", "E"],
+                       "discomfort_pct": [30.0, 2.0, np.nan, 10.0, 20.0],
+                       "discomfort_hours": [3, 1, 0, 2, 2],
+                       "discomfort_warm": [3, 1, 0, 1, 2],
+                       "discomfort_cold": [0, 0, 0, 1, 0]})
+    fig = creer_barres_en16798(df, 2, "Base")
+    bar = fig.data[0]
+    assert list(bar.y) == ["B", "D", "E", "A"]          # croissant, NaN écarté
+    assert fig.layout.yaxis.autorange == "reversed"     # plus faible en haut
+    assert list(bar.marker.color) == [couleur_palier(p) for p in (2, 10, 20, 30)]
+    assert couleur_palier(4.9) != couleur_palier(5.0) != couleur_palier(15.0) != couleur_palier(25.0)
+    assert any(s.x0 == 20.0 for s in fig.layout.shapes)
+    assert "Cat. II" in fig.layout.title.text and "Base" in fig.layout.title.text
+    assert not creer_barres_en16798(df, 2, "Base", seuil_ref=None).layout.shapes

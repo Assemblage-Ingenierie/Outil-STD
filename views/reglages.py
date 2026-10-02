@@ -190,6 +190,7 @@ def render_reglages():
                          "cfg_saison_off", default=False,
                          help="Affiche les points en une couleur unique, sans séparer "
                               "saison de chauffe / refroidissement.")
+        _choix_langue_graphiques()
         persist_checkbox("Mode sombre (graphiques)",
                          "cfg_dark_mode", default=False,
                          help="Adapte les couleurs des graphiques Plotly au fond sombre. "
@@ -209,6 +210,26 @@ def render_reglages():
     st.divider()
     _section_maintenance()
     _pied_version()
+
+
+# ----------------------------------------------------------------------
+def _choix_langue_graphiques():
+    """Langue des graphiques (titres, axes, légendes, survols). Mémorisée par son
+    code (« fr » / « en ») et non par son libellé ; appliquée immédiatement pour
+    que l'export Word plus bas dans la page l'utilise dès ce rendu."""
+    from config import i18n
+    ss = st.session_state
+    ss.setdefault('cfg_langue_graphiques', 'fr')
+    codes = list(i18n.LANGUES)
+    if ss.get('cfg_langue_graphiques_w') not in codes:
+        ss['cfg_langue_graphiques_w'] = ss['cfg_langue_graphiques']
+    code = st.selectbox(
+        "Langue des graphiques", codes, format_func=i18n.LANGUES.get,
+        key='cfg_langue_graphiques_w',
+        help="Titres, axes, légendes et survols des graphiques, à l'écran et dans le "
+             "rapport Word. L'interface et les tableaux restent en français.")
+    ss['cfg_langue_graphiques'] = code
+    i18n.set_langue(code)
 
 
 # ----------------------------------------------------------------------

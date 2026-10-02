@@ -8,10 +8,16 @@ from config.charte import (
     COULEURS_VARIANTES,
     get_layout, grille_color, ligne_ext_color, violet_color, finalize_fig, bar_labels,
 )
+from config.i18n import t, noms_mois
 
 
-NOMS_MOIS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
+NOMS_MOIS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']  # FR (cf. noms_mois())
 JOURS_CUMULES = [0,31,59,90,120,151,181,212,243,273,304,334,365]
+
+
+def _cap(s: str) -> str:
+    """Majuscule initiale (« solar gains (kWh) » → « Solar gains (kWh) »)."""
+    return s[:1].upper() + s[1:]
 
 
 def graphique_temp_horaire(
@@ -44,7 +50,7 @@ def graphique_temp_horaire(
     for var in variantes:
         if var.df_meteo.empty:
             continue
-        nom = var.meteo_affiche() or "météo"
+        nom = var.meteo_affiche() or t("météo")
         if nom in meteos_vus:
             continue
         meteos_vus[nom] = var
@@ -57,7 +63,7 @@ def graphique_temp_horaire(
         n = min(len(t_ext), len(var.df_horaire))
         x = var.horodatage()
         m = var.masque_periode(n)
-        label = f'T ext — {nom}' if multi else 'T extérieure'
+        label = t('T ext — {nom}', nom=nom) if multi else t('T extérieure')
         fig.add_trace(go.Scatter(
             x=np.asarray(x[:n])[m], y=t_ext[:n][m],
             mode='lines',
@@ -69,18 +75,18 @@ def graphique_temp_horaire(
     # Seuils
     if seuil_t1:
         fig.add_hline(y=seuil_t1, line_dash='dash', line_color=ROUGE,
-                      annotation_text=f'Seuil T1 ({seuil_t1}°C)',
+                      annotation_text=t('Seuil T1 ({s}°C)', s=seuil_t1),
                       annotation_position='top right')
     if seuil_t2:
         fig.add_hline(y=seuil_t2, line_dash='dash', line_color='#8B0000',
-                      annotation_text=f'Seuil T2 ({seuil_t2}°C)',
+                      annotation_text=t('Seuil T2 ({s}°C)', s=seuil_t2),
                       annotation_position='bottom right')
 
     layout = get_layout()
     layout.update(
-        title=titre or f'Température intérieure — {zone}',
-        xaxis=dict(title='Date', gridcolor=grille_color()),
-        yaxis=dict(title='Température (°C)', gridcolor=grille_color()),
+        title=titre or t('Température intérieure — {zone}', zone=zone),
+        xaxis=dict(title=t('Date'), gridcolor=grille_color()),
+        yaxis=dict(title=t('Température (°C)'), gridcolor=grille_color()),
         height=420,
     )
     fig.update_layout(**layout)
@@ -121,7 +127,7 @@ def graphique_text_vs_text_op(
                 mask = saison == saison_nom
                 if not any(mask):
                     continue
-                label = saison_nom if saison_nom else 'Hors saison de chauffe'
+                label = t(saison_nom) if saison_nom else t('Hors saison de chauffe')
                 fig.add_trace(go.Scatter(
                     x=t_ext[mask], y=t_int[mask], mode='markers',
                     marker=dict(size=3, color=color, opacity=0.4), name=label,
@@ -131,7 +137,7 @@ def graphique_text_vs_text_op(
             fig.add_trace(go.Scatter(
                 x=t_ext, y=t_int, mode='markers',
                 marker=dict(size=3, color="#1976D2", opacity=0.4),
-                name='Points horaires',
+                name=t('Points horaires'),
                 hovertemplate='T_ext=%{x:.1f}°C<br>T_int=%{y:.1f}°C<extra></extra>',
             ))
         all_x, all_y = list(t_ext), list(t_int)
@@ -164,9 +170,9 @@ def graphique_text_vs_text_op(
 
     layout = get_layout()
     layout.update(
-        title=titre or f'T° opérative vs T° extérieure — {zone}',
-        xaxis=dict(title='T extérieure (°C)', gridcolor=grille_color()),
-        yaxis=dict(title='T opérative intérieure (°C)', gridcolor=grille_color()),
+        title=titre or t('T° opérative vs T° extérieure — {zone}', zone=zone),
+        xaxis=dict(title=t('T extérieure (°C)'), gridcolor=grille_color()),
+        yaxis=dict(title=t('T opérative intérieure (°C)'), gridcolor=grille_color()),
         height=420,
     )
     fig.update_layout(**layout)
@@ -185,26 +191,26 @@ def graphique_meteo_comparaison(variantes) -> go.Figure:
     for var in variantes:
         if var.df_meteo.empty:
             continue
-        nom = var.meteo_affiche() or "météo"
+        nom = var.meteo_affiche() or t("météo")
         if nom in vus:
             continue
         vus[nom] = True
-        t = var.df_meteo['T_ext'].values
-        n = len(t)
+        t_ext = var.df_meteo['T_ext'].values
+        n = len(t_ext)
         mois = np.repeat(range(1, 13), [d * 24 for d in jours_mois])[:n]
-        df = pd.DataFrame({'mois': mois, 't': t[:len(mois)]})
+        df = pd.DataFrame({'mois': mois, 't': t_ext[:len(mois)]})
         moy = df.groupby('mois')['t'].mean()
         color = COULEURS_VARIANTES[idx % len(COULEURS_VARIANTES)]
         idx += 1
         fig.add_trace(go.Scatter(
-            x=[NOMS_MOIS[int(m) - 1] for m in moy.index], y=moy.values,
+            x=[noms_mois()[int(m) - 1] for m in moy.index], y=moy.values,
             mode='lines+markers', name=nom, line=dict(color=color, width=2),
         ))
 
     layout = get_layout()
     layout.update(
-        title="Comparaison des fichiers météo — T° extérieure moyenne mensuelle",
-        xaxis=dict(title='Mois'), yaxis=dict(title='T extérieure (°C)', gridcolor=grille_color()),
+        title=t("Comparaison des fichiers météo — T° extérieure moyenne mensuelle"),
+        xaxis=dict(title=t('Mois')), yaxis=dict(title=t('T extérieure (°C)'), gridcolor=grille_color()),
         height=380,
     )
     fig.update_layout(**layout)
@@ -249,9 +255,9 @@ def graphique_heures_depassement(
 
     layout = get_layout()
     layout.update(
-        title=f'Heures de dépassement (seuils {seuil_t1}°C / {seuil_t2}°C)',
-        xaxis=dict(title='Zone', tickangle=-30),
-        yaxis=dict(title='Heures / an'),
+        title=t('Heures de dépassement (seuils {s1}°C / {s2}°C)', s1=seuil_t1, s2=seuil_t2),
+        xaxis=dict(title=t('Zone'), tickangle=-30),
+        yaxis=dict(title=t('Heures / an')),
         barmode='group',
         height=420,
         uniformtext=dict(minsize=8, mode='hide'),
@@ -277,18 +283,18 @@ def graphique_temp_min_moy_max(
             t_moy.append(round(st['t_moy'], 1))
             t_max.append(round(st['t_max'], 1))
         suffixe = f" — {var.nom}" if len(variantes) > 1 else ""
-        fig.add_trace(go.Bar(x=zones, y=t_min, name=f"T min{suffixe}",
+        fig.add_trace(go.Bar(x=zones, y=t_min, name=f"{t('T min')}{suffixe}",
                              marker=dict(color=color, opacity=0.45), **bar_labels()))
-        fig.add_trace(go.Bar(x=zones, y=t_moy, name=f"T moy{suffixe}",
+        fig.add_trace(go.Bar(x=zones, y=t_moy, name=f"{t('T moy')}{suffixe}",
                              marker=dict(color=color, opacity=0.7), **bar_labels()))
-        fig.add_trace(go.Bar(x=zones, y=t_max, name=f"T max{suffixe}",
+        fig.add_trace(go.Bar(x=zones, y=t_max, name=f"{t('T max')}{suffixe}",
                              marker=dict(color=color, opacity=1.0), **bar_labels()))
 
     layout = get_layout()
     layout.update(
-        title=titre or 'Températures min / moyenne / max par zone',
-        xaxis=dict(title='Zone', tickangle=-30),
-        yaxis=dict(title='Température (°C)', gridcolor=grille_color()),
+        title=titre or t('Températures min / moyenne / max par zone'),
+        xaxis=dict(title=t('Zone'), tickangle=-30),
+        yaxis=dict(title=t('Température (°C)'), gridcolor=grille_color()),
         barmode='group',
         height=440,
         uniformtext=dict(minsize=8, mode='hide'),
@@ -305,7 +311,7 @@ def graphique_apports_solaires(
 ) -> go.Figure:
     """Apports mensuels (solaires ou internes) en barres — comparaison variantes."""
     fig = go.Figure()
-    libelle = "internes" if type_apport == "internes" else "solaires"
+    libelle = t("internes" if type_apport == "internes" else "solaires")
 
     for i, var in enumerate(variantes):
         monthly = var.apports_mensuels(zone, type_apport)
@@ -313,7 +319,7 @@ def graphique_apports_solaires(
             continue
         color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
         fig.add_trace(go.Bar(
-            x=[NOMS_MOIS[int(m)-1] for m in monthly.index],
+            x=[noms_mois()[int(m)-1] for m in monthly.index],
             y=monthly.values,
             name=var.nom,
             marker=dict(color=color, opacity=0.85),
@@ -322,9 +328,9 @@ def graphique_apports_solaires(
 
     layout = get_layout()
     layout.update(
-        title=titre or f'Apports {libelle} mensuels — {zone}',
-        xaxis=dict(title='Mois'),
-        yaxis=dict(title=f'Apports {libelle} (kWh)'),
+        title=titre or t('Apports {libelle} mensuels — {zone}', libelle=libelle, zone=zone),
+        xaxis=dict(title=t('Mois')),
+        yaxis=dict(title=_cap(t('Apports {libelle} (kWh)', libelle=libelle))),
         barmode='group',
         height=380,
         uniformtext=dict(minsize=7, mode='hide'),
@@ -377,9 +383,10 @@ def heatmap_temp_jour_heure(
         hovertemplate='%{x|%d %b} · %{y}h<br>T = %{z:.1f}°C<extra></extra>'))
     layout = get_layout()
     layout.update(
-        title=titre or f'Température horaire — {zone} · {var.nom} (jour × heure)',
-        xaxis=dict(title='Date', type='date'),
-        yaxis=dict(title='Heure', dtick=6, range=[-0.5, 23.5]),
+        title=titre or t('Température horaire — {zone} · {variante} (jour × heure)',
+                         zone=zone, variante=var.nom),
+        xaxis=dict(title=t('Date'), type='date'),
+        yaxis=dict(title=t('Heure'), dtick=6, range=[-0.5, 23.5]),
         height=360,
     )
     fig.update_layout(**layout)
@@ -397,7 +404,7 @@ def graphique_apports_par_zone_mensuel(
     une seule variante). x = mois, une couleur par zone, barres groupées.
     """
     fig = go.Figure()
-    libelle = "internes" if type_apport == "internes" else "solaires"
+    libelle = t("internes" if type_apport == "internes" else "solaires")
 
     for i, zone in enumerate(zones):
         monthly = variante.apports_mensuels(zone, type_apport)
@@ -407,7 +414,7 @@ def graphique_apports_par_zone_mensuel(
         monthly = monthly.reindex(range(1, 13), fill_value=0)
         color = COULEURS_VARIANTES[i % len(COULEURS_VARIANTES)]
         fig.add_trace(go.Bar(
-            x=NOMS_MOIS,
+            x=noms_mois(),
             y=monthly.values,
             name=zone,
             marker=dict(color=color, opacity=0.9),
@@ -416,9 +423,10 @@ def graphique_apports_par_zone_mensuel(
 
     layout = get_layout()
     layout.update(
-        title=titre or f'Apports {libelle} mensuels par zone — {variante.nom}',
-        xaxis=dict(title='Mois'),
-        yaxis=dict(title=f'Apports {libelle} (kWh)'),
+        title=titre or t('Apports {libelle} mensuels par zone — {variante}',
+                         libelle=libelle, variante=variante.nom),
+        xaxis=dict(title=t('Mois')),
+        yaxis=dict(title=_cap(t('Apports {libelle} (kWh)', libelle=libelle))),
         barmode='group',
         height=440,
         uniformtext=dict(minsize=7, mode='hide'),

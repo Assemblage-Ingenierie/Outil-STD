@@ -10,6 +10,8 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import plotly.graph_objects as go
 
+from config.i18n import t
+
 
 # Chemins assets
 ASSETS_DIR = Path(__file__).parent.parent / 'assets'
@@ -330,7 +332,7 @@ def generer_rapport(
                         continue
                     pts['label'] = v.nom
                     fig_per = creer_givoni([pts], config=config, methode=methode,
-                                           titre=f"{zone} · {v.nom} — par période",
+                                           titre=t("{zone} · {variante} — par période", zone=zone, variante=v.nom),
                                            par_periode=True, note_chauffe=note_chauffe)
                     doc.add_picture(_fig_to_image(fig_per), width=Cm(17))
                     doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
