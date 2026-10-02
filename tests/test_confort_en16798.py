@@ -222,6 +222,30 @@ def test_barres_tri_couleurs_et_seuil():
     assert fig.layout.yaxis.autorange == "reversed"     # plus faible en haut
     assert list(bar.marker.color) == [couleur_palier(p) for p in (2, 10, 20, 30)]
     assert couleur_palier(4.9) != couleur_palier(5.0) != couleur_palier(15.0) != couleur_palier(25.0)
-    assert any(s.x0 == 20.0 for s in fig.layout.shapes)
     assert "Cat. II" in fig.layout.title.text and "Base" in fig.layout.title.text
-    assert not creer_barres_en16798(df, 2, "Base", seuil_ref=None).layout.shapes
+    # Bandes de fond alignées sur les paliers des barres, derrière les barres
+    from charts.adaptatif import BAND_EXCELLENT, BAND_GOOD, BAND_MODERATE
+    rects = [s for s in fig.layout.shapes if s.type == "rect"]
+    assert len(rects) == 4 and all(r.layer == "below" for r in rects)
+    assert [(r.x0, r.x1) for r in rects[:3]] == [(0, BAND_EXCELLENT), (BAND_EXCELLENT, BAND_GOOD),
+                                                 (BAND_GOOD, BAND_MODERATE)]
+    lignes = sorted(s.x0 for s in fig.layout.shapes if s.type == "line")
+    assert lignes == [BAND_EXCELLENT, BAND_GOOD, BAND_MODERATE]   # plus de ligne à 20 %
+    assert len(fig.layout.annotations) == 4
+    assert [couleur_palier(b - 0.01) for b in (BAND_EXCELLENT, BAND_GOOD, BAND_MODERATE)] == \
+           [couleur_palier(0), couleur_palier(BAND_EXCELLENT), couleur_palier(BAND_GOOD)]
+    # Axe X : 1,15 × max (30 % → 34,5), au minimum BAND_MODERATE + 5
+    assert fig.layout.xaxis.range[1] == pytest.approx(34.5)
+    assert rects[-1].x1 == pytest.approx(34.5)
+    petit = df.assign(discomfort_pct=[3.0, 2.0, np.nan, 4.0, 1.0])
+    f2 = creer_barres_en16798(petit, 2, "Base")
+    assert f2.layout.xaxis.range[1] == BAND_MODERATE + 5
+    # Libellés de bandes toujours alignés sur une même ligne, quel que soit l'axe
+    for data in (petit, df.assign(discomfort_pct=[57.0, 2.0, np.nan, 10.0, 20.0]),
+                 df.assign(discomfort_pct=[100.0, 2.0, np.nan, 10.0, 20.0])):
+        ann = creer_barres_en16798(data, 2, "Base").layout.annotations
+        assert {(a.y, a.yshift or 0, a.yanchor) for a in ann} == {(1.02, 0, "bottom")}
+    # Axe très long (100 % → 115) : un mot par ligne pour les bandes étroites
+    ann = creer_barres_en16798(df.assign(discomfort_pct=[100.0, 2.0, np.nan, 10.0, 20.0]),
+                               2, "Base").layout.annotations
+    assert ann[0].text.count("<br>") >= 2

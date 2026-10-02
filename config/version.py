@@ -12,7 +12,7 @@ Affiché dans l'onglet Réglages (pied de page).
 """
 from __future__ import annotations
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 DATE_MAJ = "2026-10-02"
 
 
