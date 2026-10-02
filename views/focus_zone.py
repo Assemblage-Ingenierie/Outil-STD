@@ -52,6 +52,97 @@ def _section_humidite(variantes_sel, zone, config):
             show_plotly(fig_hm, width='stretch', key=f"hr_hm_{i}")
 
 
+CATEGORIES_EN16798 = ["Catégorie I", "Catégorie II", "Catégorie III"]
+
+
+def choisir_categorie_en16798() -> int:
+    """Sélecteur de catégorie EN 16798 (persistant, partagé entre les vues).
+    Catégorie II par défaut."""
+    lab = persist_selectbox("Catégorie EN 16798-1", CATEGORIES_EN16798,
+                            "cfg_en16798_cat", defaut_index=1,
+                            help="Tableau B.2 : I = θc +2/−3 K, II = +3/−4 K, III = +4/−5 K.")
+    return CATEGORIES_EN16798.index(lab) + 1
+
+
+def categorie_en16798_courante() -> int:
+    """Catégorie EN 16798 sélectionnée (II par défaut), sans afficher de widget."""
+    lab = st.session_state.get("cfg_en16798_cat", CATEGORIES_EN16798[1])
+    return CATEGORIES_EN16798.index(lab) + 1 if lab in CATEGORIES_EN16798 else 2
+
+
+def _section_adaptatif(variantes_sel, zone):
+    """Onglet confort adaptatif EN 16798-1 : tableau par variante + diagramme."""
+    from charts.adaptatif import creer_diagramme_adaptatif
+
+    st.subheader(f"Confort adaptatif EN 16798-1 — {zone}")
+    with st.expander("ℹ️ À propos de l'indicateur", expanded=True):
+        st.markdown(
+            "Le **modèle adaptatif** de la norme NF EN 16798-1 (Annexe B) s'applique aux "
+            "bâtiments **sans refroidissement mécanique**, où les occupants peuvent ouvrir "
+            "les fenêtres et adapter leur tenue. Il repose sur le constat que la température "
+            "jugée confortable augmente avec la température extérieure des jours précédents : "
+            "un occupant habitué à une période chaude tolère une température intérieure plus "
+            "élevée.\n\n"
+            "- **θrm** (moyenne glissante extérieure) : moyenne des températures extérieures "
+            "journalières des jours précédents, pondérée exponentiellement "
+            "(θrm(j) = 0,2·θed(j−1) + 0,8·θrm(j−1)) ; les jours récents comptent davantage.\n"
+            "- **Température de confort** : θc = 0,33·θrm + 18,8 °C.\n"
+            "- **Bande de confort** selon la catégorie d'exigence (Tableau B.2) : "
+            "I = θc +2 / −3 K (exigence élevée), II = θc +3 / −4 K (exigence normale, "
+            "bâtiments neufs et rénovés), III = θc +4 / −5 K (exigence modérée).\n\n"
+            "L'indicateur est la **part des heures d'occupation** où la température "
+            "intérieure sort de la bande, ventilée en inconfort **chaud** (au-dessus) et "
+            "**froid** (en dessous). Seules les heures où θrm est dans le domaine de validité "
+            "du modèle sont évaluées (10–30 °C ; la limite basse ne s'applique qu'à partir "
+            "de 15 °C). Les heures hors domaine sont signalées à part.\n\n"
+            "Contrairement au diagramme de Givoni, ce modèle ne tient compte **que de la "
+            "température**, pas de l'humidité. Il n'est pas pertinent pour juger une zone "
+            "climatisée : celle-ci doit être évaluée avec des seuils fixes.")
+    cat = choisir_categorie_en16798()
+    rom = ["I", "II", "III"][cat - 1]
+
+    rows, res_par_var = [], []
+    for v in variantes_sel:
+        res = v.en16798(zone, cat)
+        if res is None:
+            continue
+        res_par_var.append((v, res))
+        pct_cats = {f'% inconfort Cat.{["I", "II", "III"][c - 1]}': v.en16798(zone, c)['discomfort_pct']
+                    for c in (1, 2, 3)}
+        rows.append({
+            'Variante': v.nom,
+            'Heures occupées': res['total_occupied'],
+            'Heures évaluées': res['total_occupied_valid'],
+            f'Inconfort Cat.{rom} (h)': res['discomfort_hours'],
+            f'Inconfort Cat.{rom} (%)': res['discomfort_pct'],
+            'dont chaud (h)': res['discomfort_hours_warm'],
+            'dont froid (h)': res['discomfort_hours_cold'],
+            **pct_cats,
+        })
+    if not rows:
+        st.info("Confort adaptatif indisponible : il faut la température intérieure, "
+                "les apports occupants et une température extérieure (météo .try ou "
+                "colonne T extérieure des résultats).")
+        return
+
+    df = pd.DataFrame(rows).set_index('Variante')
+    cols_pct = [c for c in df.columns if '(%)' in c or c.startswith('%')]
+    _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
+    st.dataframe(
+        df.style.format({c: '{:.1f} %' for c in cols_pct}, na_rep='NA', decimal=_dec,
+                        thousands=' ')
+        .background_gradient(subset=cols_pct, cmap='YlOrRd'),
+        width='stretch',
+    )
+    st.download_button("⬇️ Exporter (CSV)", data=df.to_csv().encode('utf-8-sig'),
+                       file_name=f"en16798_{zone}.csv", mime="text/csv", key="dl_en16798")
+
+    for v, res in res_par_var:
+        fig = creer_diagramme_adaptatif(res, v.col_temp(zone),
+                                        titre=f"EN 16798-1 — {zone} · {v.nom}")
+        show_plotly(fig, width='stretch', key=f"en16798_{v.nom}")
+
+
 def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
                       config: dict, methode: str = "givoni", dh_on: bool = False):
     """Affiche l'analyse détaillée d'une zone pour toutes les variantes."""
@@ -93,10 +184,13 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
 
     # -- Tableau comparatif : une ligne par variante (pour la zone choisie) --
     st.subheader(f"Comparatif des variantes — {zone}")
+    cat_en = categorie_en16798_courante()
+    col_en = f"% hors EN 16798 Cat.{['I', 'II', 'III'][cat_en - 1]}"
     rows = []
     for var in variantes_sel:
         stats = var.stats_temp(zone)
         syn = var.synthese_zone(zone)
+        res_en = var.en16798(zone, cat_en)
         rows.append({
             'Variante': var.nom,
             'Surface (m²)': round(syn['surface_m2'], 0) if syn and not np.isnan(syn.get('surface_m2', float('nan'))) else np.nan,
@@ -109,6 +203,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             f'H > {seuil_t2}°C': var.heures_dessus_seuil(zone, seuil_t2),
             f'% hors {lib} 0 m/s': var.pct_hors_confort(zone, config, 0.0, methode),
             f'% hors {lib} 1 m/s': var.pct_hors_confort(zone, config, 1.0, methode),
+            col_en: res_en['discomfort_pct'] if res_en else np.nan,
             **({f'DH > {seuil_t1:.0f}°C (°C·h)': var.degre_heures(zone, seuil_t1)} if dh_on else {}),
             'Occupation (h/an)': var.heures_occupation(zone),
             'Météo': var.meteo_affiche() or '—',
@@ -134,6 +229,9 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
         .apply(_style_na, subset=cols_pct),
         width='stretch',
     )
+    st.caption(f"« {col_en} » : part des heures d'occupation hors bande de confort "
+               "adaptatif (catégorie modifiable dans l'onglet 🌿 Confort adaptatif). "
+               "« NA » : local non occupé ou T extérieure indisponible.")
     csv = df_cmp.to_csv().encode('utf-8-sig')
     st.download_button("⬇️ Exporter le comparatif (CSV)", data=csv,
                        file_name=f"focus_{zone}.csv", mime="text/csv", key="dl_focus")
@@ -147,8 +245,9 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
 
     # Onglets : réduit le scroll et regroupe par thème. Le rapport Word reste
     # exhaustif (il génère ses figures indépendamment de l'affichage écran).
-    tab_t, tab_conf, tab_hum, tab_app = st.tabs(
-        ["🌡️ Température", "🔆 Confort bioclimatique", "💧 Humidité", "☀️ Apports"])
+    tab_t, tab_conf, tab_adapt, tab_hum, tab_app = st.tabs(
+        ["🌡️ Température", "🔆 Confort bioclimatique", "🌿 Confort adaptatif",
+         "💧 Humidité", "☀️ Apports"])
 
     # ===================== Onglet Température =====================
     with tab_t:
@@ -260,6 +359,10 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
                                             na_rep='NA', decimal=_decp, thousands=' '),
                         width='stretch',
                     )
+
+    # ===================== Onglet Confort adaptatif EN 16798 =====================
+    with tab_adapt:
+        _section_adaptatif(variantes_sel, zone)
 
     # ===================== Onglet Humidité (fragment) =====================
     with tab_hum:
