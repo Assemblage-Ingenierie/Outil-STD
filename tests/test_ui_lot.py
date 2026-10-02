@@ -132,3 +132,36 @@ def test_rapport_word_inclut_graphiques_synthese(tmp_path):
                            zones_focus=[], zones_comparaison=[], nom_projet="P",
                            methode="givoni", inclure_graphiques_synthese=True)
     assert n_images(avec) - n_images(sans) == 6
+
+
+# ----------------------------------------------------------------------
+# Dégradé de couleur des tableaux sans matplotlib (exclu de l'exécutable)
+# ----------------------------------------------------------------------
+def test_vues_sans_background_gradient():
+    """Styler.background_gradient exige matplotlib, absent de l'exécutable :
+    les vues doivent utiliser views.widgets.degrade."""
+    import glob
+    racine = os.path.dirname(os.path.dirname(__file__))
+    for f in glob.glob(os.path.join(racine, "views", "*.py")) + [APP]:
+        with open(f, encoding="utf-8") as fh:
+            assert ".background_gradient(" not in fh.read(), f
+
+
+def test_degrade_equivalent_background_gradient():
+    import pandas as pd
+    from views.widgets import degrade
+    df = pd.DataFrame({"a": [0.0, 12.5, np.nan, 50.0, 100.0], "b": [5.0] * 5})
+    css = df.style.apply(degrade, subset=["a", "b"])._compute().ctx
+    assert css[(2, 0)] == []                                   # NaN : pas de style
+    assert ("background-color", "#ffffcc") in css[(0, 0)]      # min → jaune clair
+    assert ("background-color", "#800026") in css[(4, 0)]      # max → rouge foncé
+    assert ("color", "#f1f1f1") in css[(4, 0)]                 # texte clair sur fond sombre
+    assert ("background-color", "#ffffcc") in css[(0, 1)]      # colonne constante
+    pytest.importorskip("matplotlib")
+    ref = df.style.background_gradient(subset=["a"], cmap="YlOrRd")._compute().ctx
+    def _rgb(c):
+        h = dict(c)["background-color"].lstrip("#")
+        return np.array([int(h[i:i + 2], 16) for i in (0, 2, 4)])
+    for i in (0, 1, 3, 4):
+        assert np.abs(_rgb(css[(i, 0)]) - _rgb(ref[(i, 0)])).max() <= 3
+        assert dict(css[(i, 0)])["color"] == dict(ref[(i, 0)])["color"]

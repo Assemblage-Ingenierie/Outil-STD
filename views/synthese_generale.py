@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 
-from views.widgets import persist_multiselect, show_plotly
+from views.widgets import persist_multiselect, show_plotly, degrade
 
 
 def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
@@ -79,7 +79,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
             fmt[dh_col] = '{:.0f}'
         st.dataframe(
             df.style.format(fmt, na_rep='NA', decimal=_dec, thousands=' ', precision=1)
-                  .background_gradient(subset=cols_pct, cmap='YlOrRd')
+                  .apply(degrade, subset=cols_pct)
                   .apply(_style_na, subset=cols_pct),
             width='stretch',
         )
@@ -127,7 +127,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
         st.dataframe(
             df_dn.style.format({c: '{:.1f} %' for c in cols_dn},
                                na_rep='NA', decimal=_dec, thousands=' ', precision=1)
-                  .background_gradient(subset=cols_dn, cmap='YlOrRd')
+                  .apply(degrade, subset=cols_dn)
                   .apply(_style_na, subset=cols_dn),
             width='stretch',
         )

@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from views.widgets import persist_multiselect, persist_selectbox, show_plotly
+from views.widgets import persist_multiselect, persist_selectbox, show_plotly, degrade
 
 
 @st.fragment
@@ -131,7 +131,7 @@ def _section_adaptatif(variantes_sel, zone):
     st.dataframe(
         df.style.format({c: '{:.1f} %' for c in cols_pct}, na_rep='NA', decimal=_dec,
                         thousands=' ')
-        .background_gradient(subset=cols_pct, cmap='YlOrRd'),
+        .apply(degrade, subset=cols_pct),
         width='stretch',
     )
     st.download_button("⬇️ Exporter (CSV)", data=df.to_csv().encode('utf-8-sig'),
@@ -225,7 +225,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
     _dec = ',' if st.session_state.get('cfg_format_fr', True) else '.'
     st.dataframe(
         df_cmp.style.format(fmt_focus, na_rep='NA', decimal=_dec, thousands=' ', precision=1)
-        .background_gradient(subset=cols_pct, cmap='YlOrRd')
+        .apply(degrade, subset=cols_pct)
         .apply(_style_na, subset=cols_pct),
         width='stretch',
     )
