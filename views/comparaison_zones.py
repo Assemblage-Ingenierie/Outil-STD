@@ -185,9 +185,10 @@ def _onglet_en16798(var, zones_sel):
 
     show_plotly(creer_barres_en16798(df, cat, var.nom), width='stretch', key="comp_en16798_bar")
     sans = df.loc[df['discomfort_pct'].isna(), 'zone'].tolist()
-    st.caption("Vert < 5 % · jaune 5–15 % · orange 15–25 % · rouge > 25 %. Ligne pointillée : "
-               "seuil de référence 20 %. Heures évaluées = heures occupées où θrm est dans "
-               "le domaine d'application (10–30 °C)."
+    st.caption("Bandes de fond = niveaux de performance passive : < 5 % excellente · "
+               "5–15 % bonne · 15–25 % modérée (rafraîchissement ou brassage d'air "
+               "recommandé) · > 25 % refroidissement actif nécessaire. Heures évaluées = "
+               "heures occupées où θrm est dans le domaine d'application (10–30 °C)."
                + (f" Zones sans heure évaluée (non affichées) : {', '.join(sans)}." if sans else ""))
 
     df_aff = df.rename(columns={

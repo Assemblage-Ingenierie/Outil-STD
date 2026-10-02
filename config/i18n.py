@@ -175,7 +175,10 @@ EN: dict[str, str] = {
     "Heures d'inconfort :": 'Discomfort hours:',
     'dont chaud :': 'of which too warm:',
     'dont froid :': 'of which too cold:',
-    ' Seuil de référence {s} %': ' Reference threshold {s} %',
+    'Performance passive<br>excellente': 'Excellent<br>passive performance',
+    'Bonne performance<br>passive': 'Good<br>passive performance',
+    'Modérée — rafraîchissement<br>recommandé': 'Moderate<br>cooling recommended',
+    'Refroidissement actif<br>nécessaire': 'Active cooling<br>required',
     'EN 16798-1 — inconfort adaptatif Cat. {c} (%) — {variante}':
         'EN 16798-1 adaptive comfort — Category {c} discomfort (%) — {variante}',
     'Heures occupées hors bande Cat. {c} (%)': 'Occupied hours outside Category {c} band (%)',

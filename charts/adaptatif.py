@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 
 from config.charte import (
     ROUGE, FONT_FAMILY,
-    get_layout, annotation_color, grille_color, violet_color, finalize_fig,
+    get_layout, annotation_color, grille_color, violet_color, finalize_fig, is_dark,
 )
 from core import confort_en16798 as en
 from config.i18n import t, nombre
@@ -26,8 +26,24 @@ SYMBOLES = ["circle", "diamond", "triangle-up", "square", "cross", "star"]
 # 1re couleur = violet charte, éclairci en thème sombre (cf. _couleur_variante).
 COULEURS_SUPERPOSITION = [None, "#9C27B0", "#FF9800", "#00BCD4", "#8D6E63", "#E91E63"]
 
-# Paliers de couleur du bar chart (% d'inconfort) : (borne haute, couleur)
-PALIERS_BARRES = [(5.0, "#2ECC71"), (15.0, "#F4D03F"), (25.0, "#F39C12"), (np.inf, ROUGE)]
+# Niveaux de performance passive (% d'heures occupées hors bande) — bornes des
+# bandes de fond ET des paliers de couleur des barres du bar chart par zone.
+BAND_EXCELLENT = 5
+BAND_GOOD = 15
+BAND_MODERATE = 25
+# Paliers de couleur des barres : (borne haute, couleur)
+PALIERS_BARRES = [(BAND_EXCELLENT, "#2ECC71"), (BAND_GOOD, "#F4D03F"),
+                  (BAND_MODERATE, "#F39C12"), (np.inf, ROUGE)]
+# Largeur de bande (fraction de l'axe) sous laquelle les libellés passent à un
+# mot par ligne (plus étroits) pour ne pas se chevaucher — toujours alignés.
+LARGEUR_LIBELLE_MIN = 0.06
+# Bandes de fond : (libellé FR traduit via t(), fond clair, texte clair, fond sombre, texte sombre)
+BANDES_PERFORMANCE = [
+    ("Performance passive<br>excellente", "#E8F5E9", "#2E7D32", "rgba(46,204,113,0.10)", "#81C784"),
+    ("Bonne performance<br>passive", "#FFF8E1", "#F57F17", "rgba(244,208,63,0.10)", "#FFD54F"),
+    ("Modérée — rafraîchissement<br>recommandé", "#FFF3E0", "#E65100", "rgba(243,156,18,0.12)", "#FFB74D"),
+    ("Refroidissement actif<br>nécessaire", "#FFEBEE", "#B71C1C", "rgba(227,5,19,0.12)", "#E57373"),
+]
 
 T_MIN_PLOT, T_MAX_PLOT = 10.0, 40.0
 MAX_POINTS_DEFAUT = 6000      # points « de fond » par variante au-delà desquels on sous-échantillonne
@@ -235,15 +251,15 @@ def couleur_palier(pct: float) -> str:
     return PALIERS_BARRES[-1][1]
 
 
-def creer_barres_en16798(df, category: int, variante: str,
-                         seuil_ref: float | None = 20.0) -> go.Figure:
+def creer_barres_en16798(df, category: int, variante: str) -> go.Figure:
     """
     % d'inconfort par zone en barres horizontales, de la zone la moins
-    inconfortable (en haut) à la plus inconfortable (en bas).
+    inconfortable (en haut) à la plus inconfortable (en bas), sur fond de quatre
+    bandes de performance passive (bornes BAND_EXCELLENT / BAND_GOOD / BAND_MODERATE,
+    identiques aux paliers de couleur des barres).
 
     ``df`` : colonnes zone, discomfort_pct, discomfort_hours, discomfort_warm,
     discomfort_cold (les zones sans heure évaluée — % NaN — sont écartées).
-    ``seuil_ref`` : ligne verticale de référence (%), None pour la masquer.
     """
     rom = ROMAIN[category]
     d = df[df["discomfort_pct"].notna()].sort_values("discomfort_pct", kind="stable")
@@ -261,22 +277,41 @@ def creer_barres_en16798(df, category: int, variante: str,
                        + "<br>" + t("dont froid :") + " %{customdata[2]} h<extra></extra>"),
         showlegend=False,
     ))
-    x_max = max([seuil_ref or 0.0] + list(d["discomfort_pct"])) if len(d) else 100.0
-    if seuil_ref is not None:
-        fig.add_vline(x=seuil_ref, line=dict(color=annotation_color(), width=1.5, dash="dash"))
+
+    # Axe X : au-delà du max, et au moins jusqu'à BAND_MODERATE + 5 pour que la
+    # dernière bande soit visible même sans zone au-dessus de 30 %.
+    v_max = float(d["discomfort_pct"].max()) if len(d) else 0.0
+    x_max = max(v_max * 1.15, BAND_MODERATE + 5)
+
+    # Bandes de fond (derrière les barres) + libellés alignés sur une même ligne
+    # au-dessus du graphique. Axe très étendu (bande étroite) : un mot par ligne.
+    sombre = is_dark()
+    bornes = [0, BAND_EXCELLENT, BAND_GOOD, BAND_MODERATE, x_max]
+    etroit = min(b1 - b0 for b0, b1 in zip(bornes, bornes[1:])) / x_max < LARGEUR_LIBELLE_MIN
+    for (label, fond, texte, fond_s, texte_s), x0, x1 in zip(BANDES_PERFORMANCE, bornes, bornes[1:]):
+        fig.add_vrect(x0=x0, x1=x1, fillcolor=fond_s if sombre else fond,
+                      opacity=1.0 if sombre else 0.5, line_width=0, layer="below")
+        texte_label = t(label)
+        if etroit:
+            texte_label = texte_label.replace("<br>", " ").replace(" — ", " ").replace(" ", "<br>")
         fig.add_annotation(
-            x=seuil_ref, y=1.0, yref="paper", yanchor="bottom", xanchor="left",
-            text=t(" Seuil de référence {s} %", s=f"{seuil_ref:g}"), showarrow=False,
-            font=dict(size=10, color=annotation_color(), family=FONT_FAMILY),
+            x=(x0 + x1) / 2, y=1.02, yref="paper", xanchor="center", yanchor="bottom",
+            text=f"<b><i>{texte_label}</i></b>", showarrow=False,
+            font=dict(size=9, color=texte_s if sombre else texte, family=FONT_FAMILY),
         )
+    # Frontières entre bandes : pointillés fins
+    for xval in (BAND_EXCELLENT, BAND_GOOD, BAND_MODERATE):
+        fig.add_vline(x=xval, line_dash="dot", line_width=1,
+                      line_color="rgba(255,255,255,0.25)" if sombre else "rgba(0,0,0,0.2)")
+
     layout = get_layout()
     layout.update(
         title=t("EN 16798-1 — inconfort adaptatif Cat. {c} (%) — {variante}", c=rom, variante=variante),
         xaxis=dict(title=t("Heures occupées hors bande Cat. {c} (%)", c=rom),
-                   range=[0, x_max * 1.15 + 1], gridcolor=grille_color(), ticksuffix=" %"),
+                   range=[0, x_max], gridcolor=grille_color(), ticksuffix=" %"),
         yaxis=dict(autorange="reversed", automargin=True),   # plus faible en haut
-        height=max(320, 140 + 26 * len(d)),
-        margin=dict(l=20, r=40, t=70, b=50),
+        height=max(340, 165 + 26 * len(d)),
+        margin=dict(l=20, r=40, t=105 + (24 if etroit else 0), b=50),  # place des libellés de bandes
         bargap=0.25,
     )
     fig.update_layout(**layout)
