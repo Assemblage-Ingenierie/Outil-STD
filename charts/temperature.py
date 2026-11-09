@@ -433,3 +433,22 @@ def graphique_apports_par_zone_mensuel(
     )
     fig.update_layout(**layout)
     return finalize_fig(fig)
+
+
+def graphique_besoins_par_zone(variante, zones: list[str]) -> go.Figure | None:
+    """Besoins annuels de chauffage / climatisation par zone (kWh/m²), une variante.
+    None si la synthèse annuelle manque pour une des zones."""
+    syns = [variante.synthese_zone(z) for z in zones]
+    if not zones or any(s is None for s in syns):
+        return None
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=list(zones), y=[s['besoins_chaud_kwh_m2'] for s in syns],
+                         name=t('Chauffage'), marker_color=ROUGE, **bar_labels()))
+    fig.add_trace(go.Bar(x=list(zones), y=[s['besoins_froid_kwh_m2'] for s in syns],
+                         name=t('Climatisation'), marker_color='#2196F3', **bar_labels()))
+    layout = get_layout()
+    layout.update(title=t('Besoins annuels par zone (kWh/m²)'), xaxis=dict(tickangle=-30),
+                  yaxis=dict(title='kWh/m²'), barmode='group', height=400,
+                  uniformtext=dict(minsize=8, mode='hide'))
+    fig.update_layout(**layout)
+    return finalize_fig(fig)

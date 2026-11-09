@@ -1,10 +1,8 @@
 """Tests du lot d'améliorations UI :
 - nom de fichier de snapshot = titre du graphique (plotly_config)
 - vitesse d'air dans la légende COCO + annotations sur le diagramme
-- séparateur décimal virgule dans le rapport Word (format_fr)
 """
 import os
-import re
 import numpy as np
 import pytest
 import config.charte as charte
@@ -58,34 +56,6 @@ def test_givoni_annotations_vitesse_sur_graphe():
 
 
 # ----------------------------------------------------------------------
-# #8 — séparateur décimal virgule dans le rapport Word
-# ----------------------------------------------------------------------
-def _cellules(buf):
-    from docx import Document
-    from io import BytesIO
-    doc = Document(BytesIO(buf.getvalue()))
-    return [c.text for t in doc.tables for row in t.rows for c in row.cells]
-
-
-def test_rapport_word_separateur_decimal(tmp_path):
-    from export.word_report import generer_rapport
-    v = _variante(tmp_path, ["A", "B"], n_rows=48)
-    buf_fr = generer_rapport(variantes=[v], config={}, seuil_t1=26.0, seuil_t2=28.0,
-                             zones_focus=[], zones_comparaison=[], nom_projet="P",
-                             methode="givoni", format_fr=True,
-                             inclure_graphiques_synthese=False)
-    buf_pt = generer_rapport(variantes=[v], config={}, seuil_t1=26.0, seuil_t2=28.0,
-                             zones_focus=[], zones_comparaison=[], nom_projet="P",
-                             methode="givoni", format_fr=False,
-                             inclure_graphiques_synthese=False)
-    cells_fr = _cellules(buf_fr)
-    cells_pt = _cellules(buf_pt)
-    assert any(re.search(r"\d,\d", c) for c in cells_fr), "virgule attendue en format FR"
-    assert not any(re.search(r"\d\.\d", c) for c in cells_fr), "aucun point décimal en format FR"
-    assert any(re.search(r"\d\.\d", c) for c in cells_pt), "point attendu si format_fr=False"
-
-
-# ----------------------------------------------------------------------
 # Synthèse générale : onglets thématiques + graphe heures de dépassement
 # ----------------------------------------------------------------------
 def test_synthese_generale_onglets_et_graphe_heures(tmp_path):
@@ -101,37 +71,6 @@ def test_synthese_generale_onglets_et_graphe_heures(tmp_path):
     # 6 graphes : besoins, températures, HEURES DE DÉPASSEMENT (nouveau),
     # humidité, % inconfort, inconfort jour/nuit.
     assert len(at.get("plotly_chart")) == 6
-
-
-def _kaleido_ok():
-    try:
-        import plotly.graph_objects as go
-        go.Figure().to_image(format="png")
-        return True
-    except Exception:
-        return False
-
-
-@pytest.mark.skipif(not _kaleido_ok(), reason="kaleido/Chrome indisponible")
-def test_rapport_word_inclut_graphiques_synthese(tmp_path):
-    """Les 6 graphes barres bâtiment sont ajoutés à la synthèse du rapport Word
-    quand inclure_graphiques_synthese=True (source charts/synthese partagée)."""
-    from export.word_report import generer_rapport
-    from docx import Document
-    from io import BytesIO
-
-    v = _variante(tmp_path, ["A", "B"], n_rows=48)
-
-    def n_images(buf):
-        return len(Document(BytesIO(buf.getvalue())).inline_shapes)
-
-    sans = generer_rapport(variantes=[v], config={}, seuil_t1=26.0, seuil_t2=28.0,
-                           zones_focus=[], zones_comparaison=[], nom_projet="P",
-                           methode="givoni", inclure_graphiques_synthese=False)
-    avec = generer_rapport(variantes=[v], config={}, seuil_t1=26.0, seuil_t2=28.0,
-                           zones_focus=[], zones_comparaison=[], nom_projet="P",
-                           methode="givoni", inclure_graphiques_synthese=True)
-    assert n_images(avec) - n_images(sans) == 6
 
 
 # ----------------------------------------------------------------------

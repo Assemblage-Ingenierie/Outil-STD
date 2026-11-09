@@ -5,7 +5,7 @@ Vue Variantes — deux tableaux synchronisés par la liste d'améliorations :
 
 La liste des améliorations est UNIQUE (source = tableau descriptif). Tout ajout /
 renommage / suppression d'amélioration dans le descriptif se répercute dans le
-récapitulatif. Les deux tableaux figurent dans le rapport Word.
+récapitulatif. Les deux tableaux figurent dans le annexe Word.
 """
 import streamlit as st
 import pandas as pd

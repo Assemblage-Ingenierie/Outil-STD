@@ -294,7 +294,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
         st.info("ℹ️ Les variantes comparées utilisent des **fichiers météo différents** : "
                 + ", ".join(sorted(meteos)) + ". Les graphiques bâtiment/météo intègrent cette différence.")
 
-    # Onglets : réduit le scroll et regroupe par thème. Le rapport Word reste
+    # Onglets : réduit le scroll et regroupe par thème. Le annexe Word reste
     # exhaustif (il génère ses figures indépendamment de l'affichage écran).
     tab_t, tab_conf, tab_adapt, tab_hum, tab_app = st.tabs(
         ["🌡️ Température", "🔆 Confort bioclimatique", "🌿 Confort adaptatif",

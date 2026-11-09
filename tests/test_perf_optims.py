@@ -191,3 +191,18 @@ def test_zones_modele_config_differente_polygone_different():
     assert base is not override
     # HR max abaissée → w (humidité absolue) max du 1er polygone plus faible
     assert override[0][3].max() < base[0][3].max()
+
+
+def test_colonnes_lues_sans_copier_attrs(tmp_path):
+    """Les accesseurs colonnes ne recopient pas df.attrs (deepcopy coûteux de
+    attrs['groupes'] sur les gros projets) et laissent les attrs du DataFrame intacts."""
+    from tests.test_nouvelles_fonctions import _variante
+    v = _variante(tmp_path, ["A", "B"], n_rows=24)
+    v.df_horaire.attrs["groupes"] = {"lourd": list(range(10_000))}
+    s = v.col_temp("A")
+    assert len(s) == 24 and s.attrs == {}
+    assert v.df_horaire.attrs["groupes"]["lourd"][-1] == 9_999
+    assert v.col_temp("ZZZ").empty
+    # Toujours à jour si le DataFrame est modifié en place
+    v.df_horaire["Température (°C)|A"] = 42.0
+    assert (v.col_temp("A") == 42.0).all()

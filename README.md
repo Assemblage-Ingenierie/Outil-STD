@@ -10,7 +10,9 @@ Outil métier d'analyse des sorties de **simulation thermique dynamique (STD) Pl
 - **Humidité relative** : synthèse, cartes jour × heure, courbes horaires.
 - **Périodes d'analyse** et **périodes de focus** configurables, seuils T0/T1/T2, inconfort jour/nuit, degré-heures.
 - **Météo** par défaut du projet, surchargeable par variante (fichiers Météonorm `.try`).
-- **Export Word** selon la charte Assemblage (couverture, synthèse, focus, comparaison).
+- **Export annexe** (onglet *Réglages*) : un Word A4 paysage avec tous les indicateurs bâtiment et par zone
+  (toutes zones) et les graphiques des zones choisies, tableaux et figures numérotés ; plus un classeur
+  Excel des valeurs brutes (un onglet par tableau + feuille « Zones » consolidée) et un ZIP des figures en PNG.
 - **Projet autoportant** `.stdproj` (variantes parsées + paramètres + sélections).
 
 ## Formats d'entrée (3 fichiers par variante)
@@ -51,7 +53,5 @@ py -m pytest tests/ -v
   `%LOCALAPPDATA%\OutilSTD\outil_std.log` (lanceur) et `outil_std_server.log` (serveur).
 - **`ERR_CONNECTION_REFUSED` au lancement** : port 8501 occupé par un process fantôme, ou proxy d'entreprise
   interceptant les adresses locales → ajouter `localhost;127.0.0.1` aux exceptions proxy Windows.
-- **Export du rapport Word en erreur** : renseigner le champ **« Nom du projet »** dans l'onglet *Réglages*
-  avant de générer le rapport.
 - **Premier chargement d'un gros fichier lent (minutes)** : normal (parsing `.slk`). Les chargements suivants
   du même fichier sont mis en cache disque. Enregistrer le projet `.stdproj` après le setup pour des réouvertures rapides.

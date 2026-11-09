@@ -42,6 +42,7 @@ all_datas    = st_datas + plotly_datas + kaleido_datas + webview_datas + clr_dat
 all_binaries = st_binaries + plotly_binaries + webview_binaries + clr_binaries
 all_hidden   = st_hidden + plotly_hidden + webview_hidden + clr_hidden + [
     "kaleido",
+    "openpyxl",
     "kaleido._sync_server",
     "kaleido._page_generator",
     "kaleido._kaleido_tab",
