@@ -3,7 +3,7 @@ Langue des GRAPHIQUES (titres, axes, légendes, survols, annotations).
 
 L'interface et les tableaux restent en français ; seuls les textes portés par
 les figures Plotly basculent, pour intégrer les graphiques à un rendu
-anglophone (écran ET rapport Word, qui réutilise les mêmes fonctions).
+anglophone (écran ET annexe Word, qui réutilise les mêmes fonctions).
 
 Usage : ``t("Température intérieure — {zone}", zone=zone)``. La clé est le texte
 français lui-même (lisible dans le code) ; en anglais on cherche sa traduction

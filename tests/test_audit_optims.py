@@ -5,8 +5,7 @@ Tests de non-régression des optimisations issues de l'audit (branche perf) :
   et de l'inconfort jour/nuit — avec invalidation correcte quand la période change ;
 - équivalence du point-dans-polygone numpy (remplaçant matplotlib) ;
 - dé-pickle restreint (sécurité) : roundtrip projet valide + refus d'une charge
-  malveillante ;
-- tableaux récap/descriptif du rapport Word (branche factorisée _ajouter_tableau).
+  malveillante.
 """
 import os
 import pickle
@@ -136,26 +135,3 @@ def test_projet_roundtrip_securise(tmp_path):
     assert charge["selections"] == {"sel_focus_zone": "A"}
 
 
-# ----------------------------------------------------------------------
-# Rapport Word : tableaux récap (✕) + descriptif (branche _ajouter_tableau)
-# ----------------------------------------------------------------------
-def test_rapport_word_recap_et_descriptif(tmp_path):
-    from export.word_report import generer_rapport
-    from docx import Document
-    from io import BytesIO
-
-    v = _variante(tmp_path, ["A"], n_rows=48)
-    df_recap = pd.DataFrame({"v": [True, False]},
-                            index=["Brise-soleil", "Surventilation"])
-    df_recap.index.name = "Amélioration"
-    df_detail = pd.DataFrame({"Amélioration": ["Brise-soleil"],
-                              "Descriptif": ["Protection sud"]})
-    buf = generer_rapport(variantes=[v], config={}, seuil_t1=26.0, seuil_t2=28.0,
-                          zones_focus=[], zones_comparaison=[], nom_projet="P",
-                          methode="givoni", df_recap=df_recap, df_detail=df_detail,
-                          inclure_graphiques_synthese=False)
-    cellules = [c.text for t in Document(BytesIO(buf.getvalue())).tables
-                for row in t.rows for c in row.cells]
-    assert "✕" in cellules                  # case cochée rendue
-    assert "Brise-soleil" in cellules        # ligne d'amélioration
-    assert "Protection sud" in cellules      # descriptif

@@ -48,7 +48,7 @@ def _appels_t(fichier):
 def test_tous_les_appels_t_sont_traduits():
     fichiers = (glob.glob(os.path.join(RACINE, "charts", "*.py"))
                 + glob.glob(os.path.join(RACINE, "views", "*.py"))
-                + [os.path.join(RACINE, "export", "word_report.py")])
+                + [os.path.join(RACINE, "export", "annexe.py")])
     manquants = {(os.path.basename(f), s) for f in fichiers for s in _appels_t(f)
                  if s not in i18n.EN}
     assert not manquants, sorted(manquants)

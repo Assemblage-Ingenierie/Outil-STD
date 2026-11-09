@@ -54,7 +54,7 @@ def render_synthese_generale(variantes: list, seuil_t1: float, seuil_t2: float,
         return ['background-color:#FFFFFF; color:#9E9E9E; font-style:italic'
                 if v != v else '' for v in col]
 
-    # Graphiques barres bâtiment : source unique partagée avec le rapport Word.
+    # Graphiques barres bâtiment : source unique partagée avec le annexe Word.
     from charts import synthese as gsyn
     noms_var = list(df.index)
 

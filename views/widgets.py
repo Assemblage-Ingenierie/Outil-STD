@@ -7,7 +7,7 @@ Pour persister, on stocke la valeur dans une clé session_state dédiée
 valeur par défaut lors de la recréation du widget.
 
 Les sélections sont ainsi partagées entre les vues ET réutilisées par
-l'export du rapport Word (pas de double saisie).
+l'export du annexe Word (pas de double saisie).
 """
 from __future__ import annotations
 import numpy as np

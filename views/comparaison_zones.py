@@ -2,10 +2,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 
-from config.charte import ROUGE, get_layout, finalize_fig, bar_labels
-from config.i18n import t
 from views.widgets import persist_multiselect, persist_selectbox, show_plotly, degrade
 
 
@@ -16,6 +13,7 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
         graphique_temp_min_moy_max,
         graphique_heures_depassement,
         graphique_apports_par_zone_mensuel,
+        graphique_besoins_par_zone,
     )
     from charts.humidite import graphique_hr_min_moy_max
 
@@ -118,20 +116,9 @@ def render_comparaison_zones(variantes: list, seuil_t1: float, seuil_t2: float,
     with tab_bes:
         # -- Besoins annuels --
         st.subheader("Besoins annuels par zone")
-        if all(var.synthese_zone(z) is not None for z in zones_sel):
-            fig_bes = go.Figure()
-            besoins_ch = [var.synthese_zone(z)['besoins_chaud_kwh_m2'] for z in zones_sel]
-            besoins_fr = [var.synthese_zone(z)['besoins_froid_kwh_m2'] for z in zones_sel]
-            fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_ch, name=t('Chauffage'),
-                                     marker_color=ROUGE, **bar_labels()))
-            fig_bes.add_trace(go.Bar(x=zones_sel, y=besoins_fr, name=t('Climatisation'),
-                                     marker_color='#2196F3', **bar_labels()))
-            layout = get_layout()
-            layout.update(title=t('Besoins annuels par zone (kWh/m²)'), xaxis=dict(tickangle=-30),
-                          yaxis=dict(title='kWh/m²'), barmode='group', height=400,
-                          uniformtext=dict(minsize=8, mode='hide'))
-            fig_bes.update_layout(**layout)
-            show_plotly(finalize_fig(fig_bes), width='stretch')
+        fig_bes = graphique_besoins_par_zone(var, zones_sel)
+        if fig_bes is not None:
+            show_plotly(fig_bes, width='stretch')
 
     with tab_app:
         # -- Apports solaires mensuels : une barre par mois par zone --

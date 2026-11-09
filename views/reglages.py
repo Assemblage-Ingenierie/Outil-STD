@@ -3,7 +3,7 @@ Onglet Réglages — configuration du projet et opérations.
 
 Regroupe ce qui était dans la sidebar (devenue minimale) : paramètres projet,
 seuils + degré-heures, modèle de confort + bornes Givoni, météo par défaut +
-renommage, ajout de variante, export Word, nouveau projet.
+renommage, ajout de variante, export annexe (Word/Excel/PNG), nouveau projet.
 
 Les valeurs de configuration sont stockées sous des clés session_state « cfg_* »
 (persistantes même quand l'onglet n'est pas affiché) et lues par les autres vues.
@@ -227,7 +227,7 @@ def _choix_langue_graphiques():
         "Langue des graphiques", codes, format_func=i18n.LANGUES.get,
         key='cfg_langue_graphiques_w',
         help="Titres, axes, légendes et survols des graphiques, à l'écran et dans le "
-             "rapport Word. L'interface et les tableaux restent en français.")
+             "annexe Word. L'interface et les tableaux restent en français.")
     ss['cfg_langue_graphiques'] = code
     i18n.set_langue(code)
 
@@ -298,7 +298,7 @@ def _section_ajout_variante():
     with st.container(border=True):
         nom_var = st.text_input("Nom de la variante", value="Variante 1", key="nom_var_input")
 
-        if st.button("📂 Résultats (.slk)", key="btn_pick_resultats", width='stretch'):
+        if st.button("📂 Résultats (.csv)", key="btn_pick_resultats", width='stretch'):
             c = choisir_fichier("Sélectionner le fichier Résultats",
                                 [("Fichiers Pléiades", "*.slk *.csv"), ("Tous", "*.*")])
             if c:
@@ -307,7 +307,7 @@ def _section_ajout_variante():
         if ss.sel_resultats:
             st.caption(f"✓ {Path(ss.sel_resultats).name}")
 
-        if st.button("📂 Synthèse (.slk)", key="btn_pick_synthese", width='stretch'):
+        if st.button("📂 Synthèse (.csv)", key="btn_pick_synthese", width='stretch'):
             c = choisir_fichier("Sélectionner le fichier Synthèse",
                                 [("Fichiers Pléiades", "*.slk *.csv"), ("Tous", "*.*")])
             if c:
@@ -366,55 +366,100 @@ def _section_ajout_variante():
 
 # ----------------------------------------------------------------------
 def _section_export():
+    """Export « annexe » : un maximum d'indicateurs et de graphiques des variantes
+    choisies (Word + Excel des tableaux + ZIP des PNG), pour être repris ailleurs."""
+    from views.widgets import persist_multiselect
+    from views.focus_zone import categorie_en16798_courante
+    from export.annexe import estimer_figures
+
     ss = st.session_state
-    st.subheader("📄 Export du rapport Word")
-    st.caption("Le rapport reprend les sélections faites dans les vues "
-               "(variantes, zone de focus, échantillon de zones).")
-    if st.button("Générer le rapport Word", key="btn_rapport", type="primary"):
-        if not ss.variantes:
-            st.error("Chargez au moins une variante.")
-            return
-        variantes_rapport = [v for v in ss.variantes
-                             if v.nom in ss.get('sel_syn_variantes', [v.nom for v in ss.variantes])]
-        if not variantes_rapport:
-            variantes_rapport = ss.variantes
-        zone_focus = ss.get('sel_focus_zone')
-        zones_focus = [zone_focus] if zone_focus else []
-        zones_comp = ss.get('sel_comp_zones', [])
+    st.subheader("📎 Export annexe (Word + Excel + PNG)")
+    st.caption("Sort tous les indicateurs des variantes choisies : tableaux bâtiment et "
+               "par zone pour **toutes les zones**, graphiques détaillés pour les zones "
+               "choisies ci-dessous. Tableaux et figures sont numérotés ; le classeur Excel "
+               "contient les valeurs brutes de chaque tableau, l'archive ZIP chaque figure "
+               "en PNG.")
+    if not ss.variantes:
+        st.info("Chargez au moins une variante.")
+        return
 
+    noms = [v.nom for v in ss.variantes]
+    c1, c2 = st.columns(2)
+    with c1:
+        sel_var = persist_multiselect("Variantes exportées", noms, "sel_annexe_variantes",
+                                      defaut=noms, auto_new=True)
+    zones = list(dict.fromkeys(z for v in ss.variantes if v.nom in sel_var for z in v.zones))
+    defaut_z = [z for z in [ss.get('sel_focus_zone'), *ss.get('sel_comp_zones', [])]
+                if z in zones]
+    with c2:
+        sel_zones = persist_multiselect("Zones détaillées (graphiques)", zones,
+                                        "sel_annexe_zones",
+                                        defaut=list(dict.fromkeys(defaut_z)),
+                                        placeholder="Aucune : tableaux seulement")
+    graphiques = persist_checkbox("Inclure les graphiques", "cfg_annexe_graphiques", default=True,
+                                  help="Décocher pour un export rapide des seuls tableaux.")
+    variantes = [v for v in ss.variantes if v.nom in sel_var]
+    n_fig = estimer_figures(len(variantes), len(sel_zones),
+                            ss.get('cfg_periodes_on', False) and bool(ss.get('cfg_periodes')),
+                            graphiques)
+    st.caption(f"≈ {n_fig} figures — compter environ {max(1, round(10 + n_fig * 0.5))} s "
+               "de génération." if n_fig else "Tableaux seulement — génération rapide.")
+
+    if st.button("Générer l'annexe", key="btn_annexe", type="primary",
+                 disabled=not variantes):
         from views.description_variantes import construire_recap
-        noms = [v.nom for v in variantes_rapport]
-        df_recap = construire_recap(noms)
-        df_detail = ss.get('ameliorations')
+        from export.annexe import generer_annexe
+        barre = st.progress(0.0, text="Préparation…")
+        try:
+            res = generer_annexe(
+                variantes, ss.config_projet,
+                seuil_t0=ss.get('cfg_seuil_t0', 18.0),
+                seuil_t1=ss.get('cfg_seuil_t1', 26.0),
+                seuil_t2=ss.get('cfg_seuil_t2', 28.0),
+                zones_detail=sel_zones,
+                nom_projet=ss.get('cfg_nom_projet', ''),
+                methode=ss.get('cfg_methode', 'givoni'),
+                categorie_en16798=categorie_en16798_courante(),
+                df_recap=construire_recap([v.nom for v in variantes]),
+                df_detail=ss.get('ameliorations'),
+                jour_debut=ss.get('cfg_jour_debut', 7.0),
+                jour_fin=ss.get('cfg_jour_fin', 22.0),
+                periodes_on=ss.get('cfg_periodes_on', False),
+                periodes=ss.get('cfg_periodes', []),
+                format_fr=ss.get('cfg_format_fr', True),
+                dh_on=ss.get('cfg_dh_on', False),
+                inclure_graphiques=graphiques,
+                par_saison=not ss.get('cfg_saison_off', False),
+                progression=lambda f, msg: barre.progress(f, text=msg[:90]),
+            )
+            ss['_annexe'] = res
+        except Exception as e:
+            ss.pop('_annexe', None)
+            st.error(f"Erreur lors de la génération de l'annexe : {e}")
+        finally:
+            barre.empty()
 
-        with st.spinner("Génération du rapport…"):
-            try:
-                from export.word_report import generer_rapport
-                buf = generer_rapport(
-                    variantes=variantes_rapport,
-                    config=ss.config_projet,
-                    seuil_t1=ss.get('cfg_seuil_t1', 26.0),
-                    seuil_t2=ss.get('cfg_seuil_t2', 28.0),
-                    zones_focus=zones_focus,
-                    zones_comparaison=zones_comp,
-                    nom_projet=ss.get('cfg_nom_projet', ''),
-                    methode=ss.get('cfg_methode', 'givoni'),
-                    df_recap=df_recap,
-                    df_detail=df_detail,
-                    seuil_t0=ss.get('cfg_seuil_t0', 18.0),
-                    jour_debut=ss.get('cfg_jour_debut', 7.0),
-                    jour_fin=ss.get('cfg_jour_fin', 22.0),
-                    periodes_on=ss.get('cfg_periodes_on', False),
-                    periodes=ss.get('cfg_periodes', []),
-                    format_fr=ss.get('cfg_format_fr', True),
-                )
-                st.download_button(
-                    "⬇️ Télécharger le rapport", data=buf,
-                    file_name=f"rapport_STD_{ss.get('cfg_nom_projet','projet').replace(' ', '_')}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key="dl_rapport")
-            except Exception as e:
-                st.error(f"Erreur rapport : {e}")
+    # Boutons de téléchargement hors du `if st.button` : ils survivent au rerun
+    # déclenché par chaque téléchargement.
+    res = ss.get('_annexe')
+    if res is not None:
+        base = "annexe_STD_" + (ss.get('cfg_nom_projet') or 'projet').replace(' ', '_')
+        st.success(f"Annexe générée : {res.n_tableaux} tableaux, {res.n_figures} figures.")
+        if res.erreurs:
+            st.warning(f"{len(res.erreurs)} figure(s) n'ont pas pu être rendues : "
+                       + " · ".join(res.erreurs[:3]))
+        d1, d2, d3 = st.columns(3)
+        d1.download_button("⬇️ Word (.docx)", data=res.docx.getvalue(), file_name=f"{base}.docx",
+                           mime="application/vnd.openxmlformats-officedocument."
+                                "wordprocessingml.document", key="dl_annexe_docx")
+        d2.download_button("⬇️ Tableaux (.xlsx)", data=res.xlsx.getvalue(),
+                           file_name=f"{base}_tableaux.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument."
+                                "spreadsheetml.sheet", key="dl_annexe_xlsx")
+        if res.zip_png is not None:
+            d3.download_button("⬇️ Figures (.zip PNG)", data=res.zip_png.getvalue(),
+                               file_name=f"{base}_figures.zip", mime="application/zip",
+                               key="dl_annexe_zip")
 
 
 # ----------------------------------------------------------------------

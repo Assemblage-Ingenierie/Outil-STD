@@ -71,7 +71,7 @@ class Variante:
         l'exemption chauffe-sous-consigne). Sert à n'afficher l'hypothèse
         correspondante sur le Givoni que pour les climats avec chauffage."""
         if 'saison' in self.df_horaire:
-            s = self.df_horaire['saison'].astype(str).str.lower()
+            s = self._col('saison').astype(str).str.lower()
             if bool(s.str.contains('chauff').any()):
                 return True
         for z in self.zones:
@@ -90,7 +90,7 @@ class Variante:
         cached = self._mask_cache.get(key)
         if cached is not None:
             return cached
-        mois = self.df_horaire['mois'].values
+        mois = self._col('mois').values
         if n is not None:
             mois = mois[:n]
         if not self.periode:
@@ -172,7 +172,7 @@ class Variante:
             if t_key not in cols or hr_key not in cols:
                 continue
             nouvelles[w_key] = humidite_absolue(
-                self.df_horaire[t_key].values, self.df_horaire[hr_key].values)
+                self._col(t_key).values, self._col(hr_key).values)
         if nouvelles:
             attrs = dict(self.df_horaire.attrs)   # pd.concat ne préserve pas attrs
             self.df_horaire = pd.concat(
@@ -185,34 +185,54 @@ class Variante:
     # Accesseurs colonnes horaires
     # ------------------------------------------------------------------
 
+    _VIDE = pd.Series(dtype=float)
+
+    def _col(self, key: str) -> pd.Series:
+        """Colonne horaire ``key`` (Series vide si absente).
+
+        ``df[col]`` recopie en profondeur ``df.attrs`` dans la Series retournée
+        (pandas ``__finalize__``) ; or ``attrs['groupes']`` (métadonnées du
+        parseur) est volumineux : ~8 ms par accès sur un projet de 164 zones,
+        multiplié par des milliers d'accès par rendu. La colonne est donc lue
+        attrs détachés (≈ 10 µs), sans mémoïsation pour rester toujours à jour."""
+        df = self.df_horaire
+        if key not in df.columns:
+            return self._VIDE
+        attrs = df.attrs
+        df.attrs = {}
+        try:
+            return df[key]
+        finally:
+            df.attrs = attrs
+
     def col_temp(self, zone: str) -> pd.Series:
         """Série horaire de température intérieure pour une zone."""
         key = f"Température (°C)|{zone}"
-        return self.df_horaire.get(key, pd.Series(dtype=float))
+        return self._col(key)
 
     def col_p_chaud(self, zone: str) -> pd.Series:
         key = f"P Chauffage (W)|{zone}"
-        return self.df_horaire.get(key, pd.Series(dtype=float))
+        return self._col(key)
 
     def col_p_froid(self, zone: str) -> pd.Series:
         key = f"P CLim (W)|{zone}"
-        return self.df_horaire.get(key, pd.Series(dtype=float))
+        return self._col(key)
 
     def col_apports_sol(self, zone: str) -> pd.Series:
         key = f"Apports solaires (W)|{zone}"
-        return self.df_horaire.get(key, pd.Series(dtype=float))
+        return self._col(key)
 
     def col_apports_eclairage(self, zone: str) -> pd.Series:
         key = f"Apports éclairage (W)|{zone}"
-        return self.df_horaire.get(key, pd.Series(dtype=float))
+        return self._col(key)
 
     def col_apports_occupants(self, zone: str) -> pd.Series:
         key = f"Apports occupants (W)|{zone}"
-        return self.df_horaire.get(key, pd.Series(dtype=float))
+        return self._col(key)
 
     def col_apports_dissipee(self, zone: str) -> pd.Series:
         key = f"Apports puissance dissipée (W)|{zone}"
-        return self.df_horaire.get(key, pd.Series(dtype=float))
+        return self._col(key)
 
     def col_apports_internes(self, zone: str) -> pd.Series:
         """Apports internes = éclairage + occupants + puissance dissipée (équipements)."""
@@ -231,12 +251,12 @@ class Variante:
 
     def col_hr(self, zone: str) -> pd.Series:
         key = f"Humidité relative (%)|{zone}"
-        return self.df_horaire.get(key, pd.Series(dtype=float))
+        return self._col(key)
 
     def col_w_interieur(self, zone: str) -> pd.Series:
         """Humidité absolue intérieure (g/kg) — pré-calculée à l'init."""
         key = f"w_interieur|{zone}"
-        return self.df_horaire.get(key, pd.Series(dtype=float))
+        return self._col(key)
 
     def apports_mensuels(self, zone: str, type_apport: str = "solaires") -> pd.Series:
         """
@@ -252,7 +272,7 @@ class Variante:
             return pd.Series(dtype=float)
         n = len(s)
         mask = self.masque_periode(n)
-        df = pd.DataFrame({"mois": self.df_horaire["mois"].values[:n], "val": s.values})
+        df = pd.DataFrame({"mois": self._col("mois").values[:n], "val": s.values})
         df = df[mask]
         # W horaires → kWh (× 1h, ÷ 1000)
         return df.groupby("mois")["val"].sum() / 1000.0
@@ -285,14 +305,14 @@ class Variante:
         Gère une plage de jour à cheval sur minuit (jour_debut > jour_fin).
         La colonne « heure » est 1..24 → heure du jour = heure − 1 (0..23).
         """
-        h = self.df_horaire['heure'].values[:n].astype(float) - 1.0
+        h = self._col('heure').values[:n].astype(float) - 1.0
         if jour_debut <= jour_fin:
             return (h >= jour_debut) & (h < jour_fin)
         return (h >= jour_debut) | (h < jour_fin)
 
     def masque_mois_periode(self, n: int, m1: int, m2: int):
         """Masque booléen des heures dont le mois ∈ [m1, m2] (gère le cheval d'année)."""
-        mois = self.df_horaire['mois'].values[:n]
+        mois = self._col('mois').values[:n]
         if m1 <= m2:
             return (mois >= m1) & (mois <= m2)
         return (mois >= m1) | (mois <= m2)
@@ -473,7 +493,7 @@ class Variante:
         if not pch.empty:
             return pch.values[:n] > 0
         if 'saison' in self.df_horaire:
-            sais = self.df_horaire['saison'].values[:n]
+            sais = self._col('saison').values[:n]
             return np.array(["chauff" in str(s).strip().lower() for s in sais])
         return np.zeros(n, dtype=bool)
 
@@ -490,7 +510,7 @@ class Variante:
         n = min(len(t), len(w))
         T = t.values[:n]
         W = w.values[:n]
-        saison = self.df_horaire['saison'].values[:n] if 'saison' in self.df_horaire else np.array([''] * n)
+        saison = self._col('saison').values[:n] if 'saison' in self.df_horaire else np.array([''] * n)
         exempt = confort.masque_chauffe_sous_consigne(T, self._est_chauffe(zone, n), config, methode)
         garde = (~exempt) & self.masque_periode(n)
         return {'T': T[garde], 'w': W[garde], 'saison': np.asarray(saison)[garde]}
@@ -505,7 +525,7 @@ class Variante:
         if self.a_meteo() and 'T_ext' in self.df_meteo:
             return self.df_meteo['T_ext'].to_numpy(dtype=float)
         if 'T_ext' in self.df_horaire:
-            t = self.df_horaire['T_ext'].to_numpy(dtype=float)
+            t = self._col('T_ext').to_numpy(dtype=float)
             if not np.isnan(t).all():
                 return t
         return np.array([], dtype=float)

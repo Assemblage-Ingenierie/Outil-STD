@@ -13,11 +13,26 @@ import tkinter.filedialog as fd
 from core import file_picker
 
 
+import pytest
+
+
 class _FauxRoot:
     """Root Tk factice : enregistre les méthodes appelées, sans Tcl."""
-    def withdraw(self): pass
+    def __init__(self): self.geo = None; self.masque = False
+    def withdraw(self): self.masque = True
     def wm_attributes(self, *a, **k): pass
+    def overrideredirect(self, *a): pass
+    def geometry(self, g): self.geo = g
+    def update_idletasks(self): pass
+    def deiconify(self): pass
+    def update(self): pass
     def destroy(self): self.detruit = True
+
+
+@pytest.fixture(autouse=True)
+def _sans_fenetre_app(monkeypatch):
+    """Par défaut, aucune fenêtre d'app détectée (tests indépendants du bureau)."""
+    monkeypatch.setattr(file_picker, "_ancrage_dialogue", lambda: None)
 
 
 def test_choisir_fichier_passe_parent_root(monkeypatch):
@@ -64,7 +79,25 @@ def test_root_detruit_meme_si_dialogue_leve(monkeypatch):
         raise RuntimeError("main thread is not in main loop")
     monkeypatch.setattr(fd, "askopenfilename", boom)
 
-    import pytest
     with pytest.raises(RuntimeError):
         file_picker.choisir_fichier("Ouvrir")
     assert getattr(faux, "detruit", False)
+
+
+def test_dialogue_ancre_sur_la_fenetre_app(monkeypatch):
+    """La boîte s'ouvre sur l'écran de l'app : root invisible placé dans sa fenêtre
+    (et non masqué en (0, 0), c.-à-d. sur l'écran principal)."""
+    faux = _FauxRoot()
+    monkeypatch.setattr(tk, "Tk", lambda: faux)
+    monkeypatch.setattr(file_picker, "_ancrage_dialogue", lambda: (2628, 449))
+    monkeypatch.setattr(fd, "askopenfilename", lambda **k: "C:/x/r.csv")
+    assert file_picker.choisir_fichier("Ouvrir") == "C:/x/r.csv"
+    assert faux.geo == "1x1+2628+449" and not faux.masque
+
+
+def test_sans_fenetre_app_root_masque(monkeypatch):
+    faux = _FauxRoot()
+    monkeypatch.setattr(tk, "Tk", lambda: faux)
+    monkeypatch.setattr(fd, "asksaveasfilename", lambda **k: "")
+    assert file_picker.enregistrer_fichier("Enregistrer") is None
+    assert faux.masque and faux.geo is None
