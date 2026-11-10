@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from docx import Document
 
-from export.annexe import generer_annexe, estimer_figures, _nom_fichier
+from export.annexe import generer_annexe, estimer_figures, _nom_png
 from tests.test_nouvelles_fonctions import _variante
 
 
@@ -109,8 +109,15 @@ def test_estimer_figures():
     assert estimer_figures(2, 0) < estimer_figures(2, 1) < estimer_figures(2, 2)
 
 
-def test_nom_fichier_png():
-    assert _nom_fichier("T<br>moy / max : <b>zone</b>?") == "T moy max zone"
+def test_nom_png_court_et_sur():
+    assert _nom_png("F003", "T<br>moy / max : <b>zone</b>?") == "F003_T_moy_max_zone.png"
+    nom = _nom_png("F021", "Diagramme de Givoni — A_Ch · V5bis (toutes variantes)")
+    assert nom == "F021_Diagramme_Givoni_A_Ch_V5bis.png"
+    long_ = _nom_png("F120", "Température horaire — Zone très longue numéro 12 · Variante "
+                             "Active Cooling RCP 8.5 2050 (jour × heure)")
+    assert len(long_) <= 40 and long_.startswith("F120_") and long_.endswith(".png")
+    assert long_.isascii() and " " not in long_
+    assert _nom_png("F001", "") == "F001.png"
 
 
 @pytest.mark.skipif(not _kaleido_ok(), reason="kaleido/Chrome indisponible")
@@ -124,7 +131,9 @@ def test_figures_word_zip_et_progression(tmp_path):
     assert len([x for x in _legendes(res) if x.startswith("Figure")]) == res.n_figures
     noms = zipfile.ZipFile(res.zip_png).namelist()
     assert len(noms) == res.n_figures
-    assert noms[0].startswith("F001 - ") and all(n.endswith(".png") for n in noms)
+    assert noms[0].startswith("F001_") and all(n.endswith(".png") for n in noms)
+    assert all(len(n) <= 40 and n.isascii() and " " not in n for n in noms)
+    assert len(set(noms)) == len(noms)
     assert pd.read_excel(res.xlsx, "Figures").shape[0] == res.n_figures
     assert etapes == sorted(etapes) and etapes[-1] == 1.0
 

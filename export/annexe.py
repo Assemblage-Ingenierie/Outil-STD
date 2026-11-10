@@ -132,11 +132,30 @@ def _texte_titre(s) -> str:
     return re.sub(r'\s+', ' ', s).strip()
 
 
-def _nom_fichier(s: str, n: int = 110) -> str:
-    s = _texte_titre(s)
-    s = re.sub(r'[\\/:*?"<>|]+', ' ', s)
-    s = re.sub(r'\s+', ' ', s).strip(' .')
-    return s[:n].rstrip(' .') or 'figure'
+# Mots vides retirés des noms de fichiers PNG (noms courts : limite de chemin Windows)
+_MOTS_VIDES = {'de', 'des', 'du', 'la', 'le', 'les', 'et', 'par', 'en', 'au', 'aux', 'a',
+               'd', 'l', 'of', 'the', 'by', 'per', 'and'}
+LONGUEUR_NOM_PNG = 40          # caractères, extension comprise : « F012_<…>.png »
+
+
+def _nom_png(code: str, titre: str, n: int = LONGUEUR_NOM_PNG) -> str:
+    """Nom de fichier PNG court et sûr pour un drive projet (chemins Windows
+    limités à 260 caractères) : code + mots-clés du titre en ASCII, sans espaces
+    ni accents, 40 caractères au plus. Ex. « F021_Diagramme_Givoni_A_Ch_V5bis.png ».
+    Le titre complet reste dans l'onglet « Figures » du classeur Excel."""
+    import unicodedata
+    t = unicodedata.normalize('NFKD', _texte_titre(titre)).encode('ascii', 'ignore').decode()
+    mots = [m for m in re.split(r'[^A-Za-z0-9_]+', t) if m and m not in _MOTS_VIDES]  # « EN » 16798 conservé
+    place = n - len(code) - len('.png') - 1
+    corps = ''
+    for m in mots:
+        cand = f'{corps}_{m}' if corps else m
+        if len(cand) > place:
+            break
+        corps = cand
+    if not corps and mots:
+        corps = mots[0][:place]
+    return f'{code}_{corps}.png' if corps else f'{code}.png'
 
 
 def _preparer_document(titre: str, nom_projet: str, version: str) -> Document:
@@ -1016,7 +1035,7 @@ def _excel(A: _Annexe) -> BytesIO:
     for i, (nom, (titre, _df)) in enumerate(feuilles.items()):
         sommaire.insert(i, {'Code': nom, 'Section': 'Données détaillées (format long, pour TCD)',
                             'Titre': titre, 'Onglet': nom})
-    figures = [{'Code': c, 'Section': s, 'Titre': ti, 'Fichier PNG': f'{c} - {_nom_fichier(ti)}.png'}
+    figures = [{'Code': c, 'Section': s, 'Titre': ti, 'Fichier PNG': _nom_png(c, ti)}
                for c, s, ti, _png in A.figures]
     with pd.ExcelWriter(buf, engine='openpyxl') as xw:
         pd.DataFrame(sommaire).to_excel(xw, sheet_name='Sommaire', index=False)
@@ -1043,6 +1062,6 @@ def _zip(A: _Annexe) -> BytesIO:
     buf = BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_STORED) as zf:   # PNG déjà compressés
         for code, _s, titre, png in A.figures:
-            zf.writestr(f'{code} - {_nom_fichier(titre)}.png', png)
+            zf.writestr(_nom_png(code, titre), png)
     buf.seek(0)
     return buf

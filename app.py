@@ -141,7 +141,7 @@ with st.sidebar:
             c_nom, c_up, c_down, c_del = st.columns([5, 1, 1, 1])
             with c_nom:
                 st.markdown(f"• {var.nom} ({len(var.zones)} zones)")
-                st.caption(f"🌤️ {var.meteo_trace()}",
+                st.caption(f"🌤️ {var.meteo_affiche() or 'Aucune météo'}",
                            help=f"{var.meteo_origine_affiche()} — "
                                 f"{var.meteo_chemin or 'chemin non renseigné'}"
                            if var.meteo_nom else "Aucun fichier météo .try : T extérieure "
