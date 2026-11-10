@@ -66,14 +66,14 @@ def test_tableaux_numerotes_et_excel_coherent(tmp_path):
     assert [int(re.match(r"Tableau (\d+)", x).group(1)) for x in leg] == \
         list(range(1, res.n_tableaux + 1))
     xl = pd.ExcelFile(res.xlsx)
-    assert xl.sheet_names[:2] == ["Sommaire", "Zones"]
+    assert xl.sheet_names[:4] == ["Sommaire", "Zones", "Zones_EN16798", "Zones_mensuel"]
     sommaire = pd.read_excel(xl, "Sommaire")
-    assert len(sommaire) == res.n_tableaux + 1      # + la feuille Zones consolidée
+    assert len(sommaire) == res.n_tableaux + 3      # + les 3 feuilles longues
     # Chaque onglet référencé existe
     assert set(sommaire["Onglet"]) <= set(xl.sheet_names)
     # Feuille Zones : format long, valeurs numériques brutes
     zl = pd.read_excel(xl, "Zones")
-    assert list(zl.columns[:2]) == ["Variante", "Zone"]
+    assert list(zl.columns[:4]) == ["Variante", "Fichier météo", "Libellé météo", "Zone"]
     assert sorted(zl["Zone"]) == ["A", "B", "C"]
     assert pd.api.types.is_numeric_dtype(zl["T max (°C)"])
 
@@ -149,3 +149,38 @@ def test_ecran_reglages_export_annexe(tmp_path):
     assert any("Annexe générée" in s.value for s in at.success)
     at.run()                                     # rerun (ex. après un téléchargement)
     assert any("Annexe générée" in s.value for s in at.success)
+
+
+def test_toutes_les_vitesses_et_donnees_completes(tmp_path):
+    """Confort Givoni à 0 / 0,5 / 1 / 1,5 m/s, DH, puissances, apports, jour/nuit,
+    EN 16798 détaillé et périodes : exportés même s'ils ne sont pas affichés dans l'app."""
+    periodes = [{"nom": "Été", "m1": 5, "m2": 10}, {"nom": "Hiver", "m1": 11, "m2": 4}]
+    res = _annexe(tmp_path, zones_detail=["A"], periodes_on=True, periodes=periodes)
+    xl = pd.ExcelFile(res.xlsx)
+    zl = pd.read_excel(xl, "Zones")
+    for vit in ("0 m/s", "0,5 m/s", "1 m/s", "1,5 m/s"):
+        assert f"% hors Givoni {vit}" in zl.columns and f"Hors Givoni {vit} (h)" in zl.columns
+        assert f"% hors jour {vit}" in zl.columns and f"% hors nuit {vit}" in zl.columns
+    for col in ("DH > 26°C (°C·h)", "DH > 28°C (°C·h)", "P max ch. (W)", "P max fr. (W)",
+                "Apports solaires (kWh)", "Apports occupants (kWh)",
+                "Chauffe sous consigne écartée (h)", "% EN 16798 Cat.III"):
+        assert col in zl.columns, col
+    # Plus la vitesse d'air est élevée, plus la zone de confort est large
+    hors = zl[[f"Hors Givoni {v} (h)" for v in ("0 m/s", "0,5 m/s", "1 m/s", "1,5 m/s")]]
+    assert (hors.diff(axis=1).iloc[:, 1:] <= 0).all().all()
+    en = pd.read_excel(xl, "Zones_EN16798")
+    assert set(en["Catégorie"]) <= {"I", "II", "III"} and len(en) == 3 * 3
+    per = pd.read_excel(xl, "Zones_periodes")
+    assert set(per["Période"]) == {"Été", "Hiver"} and "% hors Givoni 1,5 m/s" in per.columns
+    assert len(pd.read_excel(xl, "Zones_mensuel")) > 0
+    # Le Word contient le tableau bâtiment toutes vitesses
+    cells = _cellules(res)
+    assert "% hors Givoni 1,5 m/s" in cells and "Hors Givoni 0,5 m/s (h)" in cells
+
+
+def test_confort_detail_coherent_avec_pct_hors_confort(tmp_path):
+    v = _variante(tmp_path, ["A"], n_rows=48)
+    for vit in (0.0, 1.0):
+        d = v.confort_detail("A", {}, vit, "givoni")
+        p = v.pct_hors_confort("A", {}, vit, "givoni")
+        assert (d["pct"] == p) or (d["pct"] != d["pct"] and p != p)

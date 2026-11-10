@@ -42,6 +42,8 @@ def sauvegarder_projet(chemin: str | Path, etat: dict) -> Path:
             "nom": v.nom,
             "zones": list(v.zones),
             "meteo_nom": getattr(v, "meteo_nom", ""),
+            "meteo_chemin": getattr(v, "meteo_chemin", ""),
+            "meteo_origine": getattr(v, "meteo_origine", ""),
             "df_horaire": v.df_horaire,
             "df_synthese": v.df_synthese,
             "df_meteo": v.df_meteo,
@@ -90,6 +92,8 @@ def charger_projet(chemin: str | Path) -> dict:
             df_meteo=vs["df_meteo"],
             zones=vs.get("zones", []),
             meteo_nom=vs.get("meteo_nom", ""),
+            meteo_chemin=vs.get("meteo_chemin", ""),     # absents des projets < V.1.5.0
+            meteo_origine=vs.get("meteo_origine", ""),
         ))
 
     return {

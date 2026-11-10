@@ -65,6 +65,19 @@ def render_description_variantes(variantes: list):
     ams = liste_ameliorations()
 
     # ------------------------------------------------------------------
+    # 0. Traçabilité des fichiers météo
+    # ------------------------------------------------------------------
+    st.subheader("Fichiers météo des variantes")
+    df_met = pd.DataFrame([{'Variante': v.nom, **v.infos_meteo()} for v in variantes])
+    st.dataframe(df_met, hide_index=True, width='stretch')
+    st.caption("Origine : météo par défaut du projet ou météo spécifique choisie au "
+               "chargement de la variante (« Non renseignée » pour les projets enregistrés "
+               "avant la V.1.5.0). « T extérieure utilisée » : source de la température "
+               "extérieure des calculs (confort adaptatif EN 16798, T op vs T ext). "
+               "Libellés modifiables dans Réglages › Renommer les météos.")
+    st.divider()
+
+    # ------------------------------------------------------------------
     # 1. Tableau récapitulatif (cases à cocher) — lignes dérivées des améliorations
     # ------------------------------------------------------------------
     st.subheader("Récapitulatif des améliorations par variante")

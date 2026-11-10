@@ -257,7 +257,7 @@ def render_focus_zone(variantes: list, seuil_t1: float, seuil_t2: float,
             col_en: res_en['discomfort_pct'] if res_en else np.nan,
             **({f'DH > {seuil_t1:.0f}°C (°C·h)': var.degre_heures(zone, seuil_t1)} if dh_on else {}),
             'Occupation (h/an)': var.heures_occupation(zone),
-            'Météo': var.meteo_affiche() or '—',
+            'Météo': var.meteo_trace(),
         })
     df_cmp = pd.DataFrame(rows).set_index('Variante')
     cols_pct = [c for c in df_cmp.columns if c.startswith('% hors')]
