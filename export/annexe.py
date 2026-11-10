@@ -43,6 +43,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
+from core.confort import vitesses_modele
 from core.confort_en16798 import CATEGORIES
 
 ASSETS_DIR = Path(__file__).parent.parent / 'assets'
@@ -358,33 +359,139 @@ def _en16798_batiment(var, zones) -> dict:
     return out
 
 
-def _ligne_zone(var, zone, config, methode, seuils, dh_on) -> dict:
+def _vit(v: float) -> str:
+    """Vitesse d'air au format FR : 0 / 0,5 / 1 / 1,5 m/s."""
+    return f"{v:g}".replace('.', ',') + ' m/s'
+
+
+def _par_m2(x, surf) -> float:
+    return x / surf if (x == x and surf == surf and surf > 0) else np.nan
+
+
+def _ligne_thermique(var, zone, seuils) -> dict:
+    """Besoins, températures, humidité, dépassements, degré-heures, puissances max."""
     t0, t1, t2 = seuils
-    lib = 'COCO' if methode == 'coco' else 'Givoni'
     syn = var.synthese_zone(zone) or {}
-    st_t = var.stats_temp(zone)
-    st_h = var.stats_hr(zone)
-    row = {
-        'Surface (m²)': _surface(var, zone),
+    st_t, st_h = var.stats_temp(zone), var.stats_hr(zone)
+    surf = _surface(var, zone)
+    pmax = var.puissances_max(zone)
+    return {
+        'Surface (m²)': surf,
         'Besoins ch. (kWh)': syn.get('besoins_chaud_kwh', np.nan),
         'Besoins fr. (kWh)': syn.get('besoins_froid_kwh', np.nan),
         'Besoins ch. (kWh/m²)': syn.get('besoins_chaud_kwh_m2', np.nan),
         'Besoins fr. (kWh/m²)': syn.get('besoins_froid_kwh_m2', np.nan),
+        'P max ch. (W)': pmax['chauffage'], 'P max ch. (W/m²)': _par_m2(pmax['chauffage'], surf),
+        'P max fr. (W)': pmax['climatisation'],
+        'P max fr. (W/m²)': _par_m2(pmax['climatisation'], surf),
         'T min (°C)': st_t['t_min'], 'T moy (°C)': st_t['t_moy'], 'T max (°C)': st_t['t_max'],
         'HR min (%)': st_h['hr_min'], 'HR moy (%)': st_h['hr_moy'], 'HR max (%)': st_h['hr_max'],
         f'H < {t0:g}°C': var.heures_sous_seuil(zone, t0),
         f'H > {t1:g}°C': var.heures_dessus_seuil(zone, t1),
         f'H > {t2:g}°C': var.heures_dessus_seuil(zone, t2),
-        'Occupation (h)': var.heures_occupation(zone),
-        f'% hors {lib} 0 m/s': var.pct_hors_confort(zone, config, 0.0, methode),
-        f'% hors {lib} 1 m/s': var.pct_hors_confort(zone, config, 1.0, methode),
+        f'DH > {t1:g}°C (°C·h)': var.degre_heures(zone, t1),
+        f'DH > {t2:g}°C (°C·h)': var.degre_heures(zone, t2),
     }
+
+
+def _ligne_confort(var, zone, config, methode) -> dict:
+    """Confort bioclimatique à TOUTES les vitesses d'air du modèle + EN 16798 I/II/III."""
+    lib = 'COCO' if methode == 'coco' else 'Givoni'
+    row = {'Occupation (h)': var.heures_occupation(zone)}
+    exemptees = np.nan
+    for vit in vitesses_modele(methode):
+        d = var.confort_detail(zone, config, vit, methode)
+        row[f'Hors {lib} {_vit(vit)} (h)'] = d['heures_hors']
+        row[f'% hors {lib} {_vit(vit)}'] = d['pct']
+        exemptees = d['heures_exemptees']
+    row['Chauffe sous consigne écartée (h)'] = exemptees
     for c in CATEGORIES:
         r = var.en16798(zone, c)
         row[f'% EN 16798 Cat.{ROMAIN[c]}'] = r['discomfort_pct'] if r else np.nan
-    if dh_on:
-        row[f'DH > {t1:g}°C (°C·h)'] = var.degre_heures(zone, t1)
     return row
+
+
+def _ligne_jour_nuit(var, zone, config, methode, jour_debut, jour_fin) -> dict:
+    """% hors confort jour / nuit de la zone, à toutes les vitesses."""
+    t = var.col_temp(zone)
+    row = {}
+    if t.empty:
+        return row
+    mj = var.masque_jour(len(t), jour_debut, jour_fin)
+    for vit in vitesses_modele(methode):
+        for plage, m in (('jour', mj), ('nuit', ~mj)):
+            row[f'% hors {plage} {_vit(vit)}'] = var.confort_detail(
+                zone, config, vit, methode, masque_extra=m)['pct']
+    return row
+
+
+def _ligne_apports(var, zone) -> dict:
+    surf = _surface(var, zone)
+    row = {'Surface (m²)': surf}
+    for k, val in var.apports_annuels(zone).items():
+        row[f'Apports {k} (kWh)'] = val
+    for k in ('solaires', 'internes'):
+        row[f'Apports {k} (kWh/m²)'] = _par_m2(row[f'Apports {k} (kWh)'], surf)
+    return row
+
+
+def _confort_batiment(var, config, methode) -> dict:
+    """Agrégat bâtiment, toutes vitesses : heures hors confort cumulées / heures
+    d'occupation cumulées (même pondération que la synthèse : par heures)."""
+    lib = 'COCO' if methode == 'coco' else 'Givoni'
+    row = {}
+    for vit in vitesses_modele(methode):
+        occ = hors = exe = 0
+        for z in var.zones:
+            d = var.confort_detail(z, config, vit, methode)
+            occ += d['heures_occ']
+            hors += d['heures_hors']
+            exe += d['heures_exemptees']
+        row["Heures d'occupation (toutes zones)"] = occ
+        row[f'Hors {lib} {_vit(vit)} (h)'] = hors
+        row[f'% hors {lib} {_vit(vit)}'] = (100.0 * hors / occ) if occ else np.nan
+        row['Chauffe sous consigne écartée (h)'] = exe
+    return row
+
+
+def _puissances_batiment(var) -> dict:
+    """Puissances max simultanées du bâtiment (somme horaire des zones) et apports annuels."""
+    out = {}
+    for nom, col in (('chauffage', var.col_p_chaud), ('climatisation', var.col_p_froid)):
+        series = [col(z).values for z in var.zones if not col(z).empty]
+        out[f'P max simultanée {nom} (W)'] = np.nan
+        if series:
+            n = min(len(x) for x in series)
+            tot = np.sum([x[:n] for x in series], axis=0)[var.masque_periode(n)]
+            if tot.size:
+                out[f'P max simultanée {nom} (W)'] = float(np.nanmax(tot))
+    tot = {}
+    for z in var.zones:
+        for k, val in var.apports_annuels(z).items():
+            if val == val:
+                tot[k] = tot.get(k, 0.0) + val
+    for k in ('solaires', 'éclairage', 'occupants', 'équipements', 'internes'):
+        out[f'Apports {k} (kWh)'] = tot.get(k, np.nan)
+    return out
+
+
+def _lignes_periodes(var, zone, config, methode, periodes) -> list[dict]:
+    """Inconfort par période de focus, à toutes les vitesses d'air."""
+    lib = 'COCO' if methode == 'coco' else 'Givoni'
+    par_vit = {vit: {r['periode']: r for r in var.inconfort_periodes(zone, config, periodes,
+                                                                       methode, vit)}
+               for vit in vitesses_modele(methode)}
+    rows = []
+    for p_ in periodes:
+        nom = p_.get('nom', '')
+        row = {'Variante': var.nom, 'Période': nom}
+        for vit, rr in par_vit.items():
+            r = rr.get(nom, {})
+            row["Heures d'occupation"] = r.get('heures_occ', 0)
+            row[f'Hors {lib} {_vit(vit)} (h)'] = r.get('heures_inconfort', 0)
+            row[f'% hors {lib} {_vit(vit)}'] = r.get('pct', np.nan)
+        rows.append(row)
+    return rows
 
 
 def _df_en16798_zones(var, zones, cat) -> pd.DataFrame:
@@ -597,16 +704,41 @@ def _contenu(A: _Annexe, P: SimpleNamespace) -> None:
         ('Périodes de focus', ', '.join(f"{p_.get('nom', '')} ({NOMS_MOIS[int(p_['m1']) - 1]}→"
                                         f"{NOMS_MOIS[int(p_['m2']) - 1]})" for p_ in P.periodes)
          if P.periodes else 'désactivées'),
-        ('Degré-heures (DH)', 'inclus' if P.dh_on else 'non inclus'),
+        ("Vitesses d'air du modèle", ' / '.join(_vit(v_) for v_ in vitesses_modele(methode))),
         ('Zones détaillées (graphiques)', ', '.join(P.zones_detail) or 'aucune'),
     ]
     A.tableau('Paramètres de calcul', pd.DataFrame(params, columns=['Paramètre', 'Valeur']))
 
-    rows = [{'Variante': v.nom, 'Météo': v.meteo_affiche() or '—', 'Nb zones': len(v.zones),
-             'Surface totale (m²)': np.nansum([_surface(v, z) for z in v.zones]),
-             'Heures simulées': len(v.df_horaire), 'Chauffée': v.a_chauffage(),
-             'T ext. disponible': bool(len(v.t_ext_horaire()))} for v in variantes]
-    A.tableau('Variantes chargées', pd.DataFrame(rows).set_index('Variante'))
+    rows = []
+    for v in variantes:
+        met = v.infos_meteo()
+        rows.append({'Variante': v.nom, 'Fichier météo': met['Fichier météo'],
+                     'Libellé météo': met['Libellé météo'],
+                     'Origine météo': met['Origine météo'],
+                     'T extérieure utilisée': met['T extérieure utilisée'],
+                     'Nb zones': len(v.zones),
+                     'Surface totale (m²)': np.nansum([_surface(v, z) for z in v.zones]),
+                     'Heures simulées': len(v.df_horaire), 'Chauffée': v.a_chauffage()})
+    A.tableau('Variantes chargées et fichier météo associé',
+              pd.DataFrame(rows).set_index('Variante'))
+
+    # Un fichier météo par ligne : où il se trouvait et quelles variantes l'utilisent
+    fichiers = {}
+    for v in variantes:
+        if v.meteo_nom:
+            f = fichiers.setdefault((v.meteo_nom, v.meteo_chemin), {
+                'Fichier météo': v.meteo_nom, 'Libellé': v.meteo_label or '—',
+                'Chemin au chargement': v.meteo_chemin or 'non renseigné', 'Variantes': []})
+            f['Variantes'].append(v.nom)
+    if fichiers:
+        df_f = pd.DataFrame(fichiers.values())
+        df_f['Variantes'] = df_f['Variantes'].str.join(', ')
+        A.tableau('Fichiers météo utilisés', df_f)
+    sans = [v.nom for v in variantes if not v.meteo_nom]
+    if sans:
+        A.note("Sans fichier météo .try : " + ', '.join(sans) + ". La température extérieure "
+               "est alors lue dans les résultats Pléiades si la colonne est présente "
+               "(cf. « T extérieure utilisée »).")
 
     df_recap, df_detail = P.df_recap, P.df_detail
     if df_recap is not None and not df_recap.empty:
@@ -622,26 +754,38 @@ def _contenu(A: _Annexe, P: SimpleNamespace) -> None:
     for v in variantes:
         ind = v.indicateurs_batiment(config, methode, seuil_t0=seuil_t0,
                                      seuil_t1=seuil_t1, seuil_t2=seuil_t2)
-        if P.dh_on:
-            ind[f'DH > {seuil_t1:.0f}°C (°C·h)'] = v.dh_batiment(seuil_t1)
-        en = _en16798_batiment(v, v.zones)
-        ind.update({k: en[k] for k in en if k.startswith('% inconfort')})
+        ind[f'DH > {seuil_t1:g}°C (°C·h)'] = v.dh_batiment(seuil_t1)
+        ind[f'DH > {seuil_t2:g}°C (°C·h)'] = v.dh_batiment(seuil_t2)
         rows.append({'Variante': v.nom, **ind})
-    df_syn = pd.DataFrame(rows).set_index('Variante')
-    A.tableau('Synthèse bâtiment — une ligne par variante', df_syn)
+    df_syn = pd.DataFrame(rows).set_index('Variante')    # (sert aussi aux graphiques)
+    A.tableau('Synthèse bâtiment — une ligne par variante',
+              df_syn[[c for c in df_syn.columns if not c.startswith('% hors')]])
     A.note("T moy / HR moy pondérées par la surface ; min / max = extrêmes toutes zones. "
-           "H < / H > : heures moyennes par zone, pondérées par la surface. % hors "
-           f"{lib} et % EN 16798 : heures d'occupation hors confort / heures d'occupation "
-           "(évaluées pour EN 16798), toutes zones cumulées.")
+           "H < / H > et DH : moyennes par zone, pondérées par la surface (DH = somme des "
+           "écarts au-dessus du seuil sur les heures d'occupation).")
 
+    rows = [{'Variante': v.nom, **_confort_batiment(v, config, methode)} for v in variantes]
+    A.tableau(f"Confort {lib} du bâtiment — toutes vitesses d'air",
+              pd.DataFrame(rows).set_index('Variante'))
+    A.note(f"Heures d'occupation hors zone de confort {lib}, toutes zones cumulées. Les "
+           "heures de chauffe sous la consigne (T < borne basse de confort, local chauffé) "
+           "sont considérées confortables et écartées du décompte.")
+
+    vits = tuple(vitesses_modele(methode))
     rows_dn = [{'Variante': v.nom, **v.inconfort_plages_horaires(
-        config, methode, P.jour_debut, P.jour_fin)} for v in variantes]
+        config, methode, P.jour_debut, P.jour_fin, vitesses=vits)} for v in variantes]
     df_dn = pd.DataFrame(rows_dn).set_index('Variante')
-    A.tableau(f'Inconfort {lib} par plage horaire (jour / nuit)', df_dn)
+    A.tableau(f"Inconfort {lib} par plage horaire (jour / nuit) — toutes vitesses d'air", df_dn)
+    A.note("Moyenne des % par zone pondérée par la surface utile.")
 
     rows_en = [{'Variante': v.nom, **_en16798_batiment(v, v.zones)} for v in variantes]
     A.tableau('Confort adaptatif EN 16798-1 — bâtiment, catégories I / II / III',
               pd.DataFrame(rows_en).set_index('Variante'))
+
+    rows = [{'Variante': v.nom, **_puissances_batiment(v)} for v in variantes]
+    A.tableau('Puissances maximales et apports annuels du bâtiment',
+              pd.DataFrame(rows).set_index('Variante'))
+    A.note("P max simultanée : maximum horaire de la somme des puissances de toutes les zones.")
 
     for typ, lab in (('solaires', 'solaires'), ('internes', 'internes (éclairage + occupants + équipements)')):
         A.tableau(f'Apports {lab} mensuels du bâtiment (kWh)', _apports_batiment(variantes, typ))
@@ -660,14 +804,21 @@ def _contenu(A: _Annexe, P: SimpleNamespace) -> None:
     # ------------------------------------------- 3. indicateurs par zone
     A.titre('3. Indicateurs par zone (toutes zones)', saut_page=True)
     A.note("Une ligne par zone, pour chaque variante. « NA » : grandeur indisponible "
-           "(zone inoccupée, colonne absente des résultats ou T extérieure manquante).")
+           "(zone inoccupée, colonne absente des résultats ou T extérieure manquante). "
+           "Toutes les données par zone, y compris le confort jour / nuit, l'EN 16798 détaillé, "
+           "les apports mensuels et les périodes de focus, sont dans le classeur Excel "
+           "(onglets Zones, Zones_EN16798, Zones_mensuel, Zones_periodes).")
     for i, v in enumerate(variantes):
         if i:
             doc.add_page_break()
         A.titre(v.nom, 2)
-        df_z = pd.DataFrame([{'Zone': z, **_ligne_zone(v, z, config, methode, P.seuils, P.dh_on)}
-                             for z in v.zones]).set_index('Zone')
-        A.tableau(f'Indicateurs par zone — {v.nom}', df_z, excel=False)
+        blocs = (('Indicateurs thermiques par zone', lambda z: _ligne_thermique(v, z, P.seuils)),
+                 (f'Confort {lib} et EN 16798 par zone',
+                  lambda z: _ligne_confort(v, z, config, methode)),
+                 ('Apports annuels par zone', lambda z: _ligne_apports(v, z)))
+        for titre_t, fn in blocs:
+            df_z = pd.DataFrame([{'Zone': z, **fn(z)} for z in v.zones]).set_index('Zone')
+            A.tableau(f'{titre_t} — {v.nom}', df_z, excel=False)
         df_en = _df_en16798_zones(v, v.zones, cat)
         if not df_en.empty:
             A.tableau(f'EN 16798-1 Cat. {rom} par zone — {v.nom}',
@@ -706,12 +857,15 @@ def _contenu(A: _Annexe, P: SimpleNamespace) -> None:
             A.note('Zone absente de toutes les variantes.')
             continue
 
-        rows = []
-        for v in vz:
-            rows.append({'Variante': v.nom,
-                         **_ligne_zone(v, zone, config, methode, P.seuils, P.dh_on),
-                         'Météo': v.meteo_affiche() or '—'})
-        A.tableau(f'Comparatif des variantes — {zone}', pd.DataFrame(rows).set_index('Variante'))
+        rows = [{'Variante': v.nom, 'Météo': v.meteo_trace(), **_ligne_thermique(v, zone, P.seuils)}
+                for v in vz]
+        A.tableau(f'Comparatif des variantes — thermique — {zone}',
+                  pd.DataFrame(rows).set_index('Variante'))
+        rows = [{'Variante': v.nom, **_ligne_confort(v, zone, config, methode),
+                 **_ligne_jour_nuit(v, zone, config, methode, P.jour_debut, P.jour_fin)}
+                for v in vz]
+        A.tableau(f'Comparatif des variantes — confort {lib} et EN 16798 — {zone}',
+                  pd.DataFrame(rows).set_index('Variante'))
 
         rows = []
         for v in vz:
@@ -734,17 +888,7 @@ def _contenu(A: _Annexe, P: SimpleNamespace) -> None:
         if P.periodes:
             rows = []
             for v in vz:
-                r0 = {r['periode']: r for r in v.inconfort_periodes(zone, config, P.periodes, methode, 0.0)}
-                r1 = {r['periode']: r for r in v.inconfort_periodes(zone, config, P.periodes, methode, 1.0)}
-                for p_ in P.periodes:
-                    nom = p_.get('nom', '')
-                    a, b = r0.get(nom, {}), r1.get(nom, {})
-                    rows.append({'Variante': v.nom, 'Période': nom,
-                                 "Heures d'occupation": a.get('heures_occ', 0),
-                                 'Inconfort 0 m/s (h)': a.get('heures_inconfort', 0),
-                                 '% inconfort 0 m/s': a.get('pct', np.nan),
-                                 'Inconfort 1 m/s (h)': b.get('heures_inconfort', 0),
-                                 '% inconfort 1 m/s': b.get('pct', np.nan)})
+                rows += _lignes_periodes(v, zone, config, methode, P.periodes)
             A.tableau(f'Inconfort {lib} par période de focus — {zone}',
                       pd.DataFrame(rows).set_index(['Variante', 'Période']))
         A.progression(f'Fiche {zone}')
@@ -814,13 +958,50 @@ def _contenu(A: _Annexe, P: SimpleNamespace) -> None:
         A.figure(graphique_apports_solaires(vz, zone, type_apport='solaires'))
         A.figure(graphique_apports_solaires(vz, zone, type_apport='internes'))
 
-    # Feuille Excel consolidée (format long) : toutes variantes × toutes zones
-    rows = []
+    # Feuilles Excel consolidées (format long) : toutes variantes × toutes zones
+    A.progression('Feuilles Excel détaillées')
+    zones, en, mens, per = [], [], [], []
     for v in variantes:
+        tete = {'Variante': v.nom, 'Fichier météo': v.meteo_nom or '',
+                'Libellé météo': v.meteo_label or ''}
         for z in v.zones:
-            rows.append({'Variante': v.nom, 'Zone': z,
-                         **_ligne_zone(v, z, config, methode, P.seuils, P.dh_on)})
-    A.zones_long = pd.DataFrame(rows)
+            ap = _ligne_apports(v, z)
+            ap.pop('Surface (m²)')
+            zones.append({**tete, 'Zone': z, **_ligne_thermique(v, z, P.seuils),
+                          **_ligne_confort(v, z, config, methode),
+                          **_ligne_jour_nuit(v, z, config, methode, P.jour_debut, P.jour_fin),
+                          **ap})
+            for c in CATEGORIES:
+                r = v.en16798(z, c)
+                if r is not None:
+                    en.append({'Variante': v.nom, 'Zone': z, 'Catégorie': ROMAIN[c],
+                               'Heures occupées': r['total_occupied'],
+                               'Heures évaluées': r['total_occupied_valid'],
+                               'Heures θrm hors domaine': r['occupied_out_of_range'],
+                               'Inconfort (h)': r['discomfort_hours'],
+                               'dont chaud (h)': r['discomfort_hours_warm'],
+                               'dont froid (h)': r['discomfort_hours_cold'],
+                               '% inconfort': r['discomfort_pct']})
+            sol, inte = v.apports_mensuels(z, 'solaires'), v.apports_mensuels(z, 'internes')
+            for m in sorted(set(sol.index) | set(inte.index)):
+                mens.append({'Variante': v.nom, 'Zone': z, 'Mois': int(m),
+                             'Mois (libellé)': NOMS_MOIS[int(m) - 1],
+                             'Apports solaires (kWh)': sol.get(m, np.nan),
+                             'Apports internes (kWh)': inte.get(m, np.nan)})
+            if P.periodes:
+                per += [{'Zone': z, **r_} for r_ in _lignes_periodes(v, z, config, methode, P.periodes)]
+    A.feuilles = {
+        'Zones': ('Toutes variantes × toutes zones : thermique, confort (toutes vitesses, '
+                  'jour / nuit), EN 16798, apports', pd.DataFrame(zones)),
+        'Zones_EN16798': ('EN 16798-1 détaillé : toutes zones × catégories I / II / III',
+                          pd.DataFrame(en)),
+        'Zones_mensuel': ('Apports mensuels par zone (kWh)', pd.DataFrame(mens)),
+    }
+    if per:
+        df_per = pd.DataFrame(per)
+        cols = ['Variante', 'Zone'] + [c for c in df_per.columns if c not in ('Variante', 'Zone')]
+        A.feuilles['Zones_periodes'] = (f'Inconfort {lib} par période de focus, toutes zones '
+                                        "et vitesses d'air", df_per[cols])
 
 
 # ======================================================================
@@ -831,15 +1012,16 @@ def _excel(A: _Annexe) -> BytesIO:
     buf = BytesIO()
     sommaire = [{'Code': c, 'Section': s, 'Titre': ti, 'Onglet': c if not df.empty else 'Zones'}
                 for c, s, ti, df in A.tables]
-    sommaire.insert(0, {'Code': 'Zones', 'Section': '3. Indicateurs par zone',
-                        'Titre': 'Toutes variantes × toutes zones (format long, pour TCD)',
-                        'Onglet': 'Zones'})
+    feuilles = getattr(A, 'feuilles', {})
+    for i, (nom, (titre, _df)) in enumerate(feuilles.items()):
+        sommaire.insert(i, {'Code': nom, 'Section': 'Données détaillées (format long, pour TCD)',
+                            'Titre': titre, 'Onglet': nom})
     figures = [{'Code': c, 'Section': s, 'Titre': ti, 'Fichier PNG': f'{c} - {_nom_fichier(ti)}.png'}
                for c, s, ti, _png in A.figures]
     with pd.ExcelWriter(buf, engine='openpyxl') as xw:
         pd.DataFrame(sommaire).to_excel(xw, sheet_name='Sommaire', index=False)
-        zl = getattr(A, 'zones_long', pd.DataFrame())
-        zl.to_excel(xw, sheet_name='Zones', index=False)
+        for nom, (_titre, df) in feuilles.items():
+            df.to_excel(xw, sheet_name=nom, index=False)
         for c, _s, _ti, df in A.tables:
             if df.empty:
                 continue
@@ -850,7 +1032,9 @@ def _excel(A: _Annexe) -> BytesIO:
             for col in ws.columns:
                 n = max((len(str(c.value)) for c in col if c.value is not None), default=8)
                 ws.column_dimensions[col[0].column_letter].width = min(60, max(8, n + 2))
-            ws.freeze_panes = 'B2' if ws.title not in ('Sommaire', 'Figures') else 'A2'
+            ws.freeze_panes = ('A2' if ws.title in ('Sommaire', 'Figures')
+                               else 'E2' if ws.title == 'Zones'
+                               else 'C2' if ws.title in feuilles else 'B2')
     buf.seek(0)
     return buf
 

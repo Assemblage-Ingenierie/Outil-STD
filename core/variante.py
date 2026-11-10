@@ -38,6 +38,8 @@ class Variante:
     zones: list[str] = field(default_factory=list)
     meteo_nom: str = ""          # nom du fichier météo (identifiant)
     meteo_label: str = ""        # libellé convivial (ex. "Climat actuel", "RCP 8.5")
+    meteo_chemin: str = ""       # chemin complet du fichier météo au chargement (traçabilité)
+    meteo_origine: str = ""      # "projet" (météo par défaut) | "specifique" | "" (inconnue)
     periode: tuple | None = None  # (mois_debut, mois_fin) ; None = année entière
     # Cache interne des indicateurs bâtiment (clé = (methode, config_hash))
     _cache_ind: dict = field(default_factory=dict, repr=False, compare=False)
@@ -108,6 +110,44 @@ class Variante:
     def meteo_affiche(self) -> str:
         """Libellé météo à afficher : le label convivial sinon le nom de fichier."""
         return self.meteo_label or self.meteo_nom or ""
+
+    # ------------------------------------------------------------------
+    # Traçabilité de la météo
+    # ------------------------------------------------------------------
+
+    def source_t_ext(self) -> str:
+        """D'où vient la température extérieure utilisée (EN 16798, T op vs T ext)."""
+        if self.a_meteo() and 'T_ext' in self.df_meteo:
+            return "Fichier météo (.try)"
+        if len(self.t_ext_horaire()):
+            return "Résultats Pléiades (colonne T ext.)"
+        return "Indisponible"
+
+    def meteo_origine_affiche(self) -> str:
+        if not self.meteo_nom:
+            return "Aucune"
+        return {"projet": "Météo par défaut du projet",
+                "specifique": "Spécifique à la variante"}.get(self.meteo_origine,
+                                                              "Non renseignée")
+
+    def meteo_trace(self) -> str:
+        """Météo sans ambiguïté : « Libellé (fichier.try) », le fichier seul s'il
+        n'a pas de libellé, ou « Aucune »."""
+        if not self.meteo_nom:
+            return "Aucune"
+        if self.meteo_label and self.meteo_label != self.meteo_nom:
+            return f"{self.meteo_label} ({self.meteo_nom})"
+        return self.meteo_nom
+
+    def infos_meteo(self) -> dict:
+        """Colonnes de traçabilité météo (tableaux de l'app et de l'annexe)."""
+        return {
+            'Fichier météo': self.meteo_nom or "Aucun",
+            'Libellé météo': self.meteo_label or "—",
+            'Origine météo': self.meteo_origine_affiche(),
+            'T extérieure utilisée': self.source_t_ext(),
+            'Chemin du fichier météo': self.meteo_chemin or "—",
+        }
 
     def horodatage(self):
         """Index datetime horaire (mois/jour/heure), construit une seule fois puis
@@ -457,6 +497,60 @@ class Variante:
         hors_et_occupe = (~dedans[:n]) & (~exempt[:n]) & occupe
         return int(hors_et_occupe.sum()), n_occ
 
+    def confort_detail(self, zone: str, config: dict, vitesse: float,
+                       methode: str = "givoni", masque_extra=None) -> dict:
+        """
+        Décompte complet du confort bioclimatique d'une zone à une vitesse d'air :
+        heures d'occupation, heures hors confort, heures de chauffe sous consigne
+        écartées (considérées confortables), % hors confort (NaN si inoccupé).
+        Mêmes règles que ``pct_hors_confort`` (masques mémoïsés partagés).
+        """
+        t = self.col_temp(zone)
+        w = self.col_w_interieur(zone)
+        occ = self.col_apports_occupants(zone)
+        vide = {'heures_occ': 0, 'heures_hors': 0, 'heures_exemptees': 0, 'pct': np.nan}
+        if t.empty or w.empty or occ.empty:
+            return vide
+        n = min(len(t), len(w), len(occ))
+        occupe = (occ.values[:n] > 0) & self.masque_periode(n)
+        if masque_extra is not None:
+            occupe = occupe & np.asarray(masque_extra)[:n]
+        n_occ = int(occupe.sum())
+        if n_occ == 0:
+            return vide
+        dedans, exempt = self._dedans_exempt(zone, config, vitesse, methode)
+        hors = int(((~dedans[:n]) & (~exempt[:n]) & occupe).sum())
+        return {'heures_occ': n_occ, 'heures_hors': hors,
+                'heures_exemptees': int((exempt[:n] & occupe).sum()),
+                'pct': 100.0 * hors / n_occ}
+
+    def apports_annuels(self, zone: str) -> dict:
+        """Apports annuels (kWh) de la zone par type, sur la période d'analyse."""
+        out = {}
+        for nom, s in (('solaires', self.col_apports_sol(zone)),
+                       ('éclairage', self.col_apports_eclairage(zone)),
+                       ('occupants', self.col_apports_occupants(zone)),
+                       ('équipements', self.col_apports_dissipee(zone))):
+            if s.empty:
+                out[nom] = np.nan
+            else:
+                v = s.values
+                out[nom] = float(v[self.masque_periode(len(v))].sum()) / 1000.0
+        internes = [out[k] for k in ('éclairage', 'occupants', 'équipements') if out[k] == out[k]]
+        out['internes'] = float(sum(internes)) if internes else np.nan
+        return out
+
+    def puissances_max(self, zone: str) -> dict:
+        """Puissances maximales de chauffage / climatisation (W) sur la période."""
+        out = {}
+        for nom, s in (('chauffage', self.col_p_chaud(zone)), ('climatisation', self.col_p_froid(zone))):
+            if s.empty:
+                out[nom] = np.nan
+            else:
+                v = s.values[self.masque_periode(len(s))]
+                out[nom] = float(np.nanmax(v)) if v.size else np.nan
+        return out
+
     def _dedans_exempt(self, zone: str, config: dict, vitesse: float,
                        methode: str = "givoni"):
         """
@@ -733,7 +827,8 @@ class Variante:
 
     def inconfort_plages_horaires(self, config: dict, methode: str = "givoni",
                                   jour_debut: float = 7.0, jour_fin: float = 22.0,
-                                  zones: list[str] | None = None) -> dict:
+                                  zones: list[str] | None = None,
+                                  vitesses: tuple = (0.0, 1.0)) -> dict:
         """
         % d'heures d'occupation hors confort (modèle actif) ventilé par plage
         horaire jour / nuit, pour les vitesses 0 et 1 m/s. Agrégat bâtiment =
@@ -742,12 +837,12 @@ class Variante:
         config = config or {}
         zones = zones if zones is not None else self.zones
         cache_key = (self._config_key(config), (methode or "givoni").lower(),
-                     jour_debut, jour_fin, tuple(zones), self.periode)
+                     jour_debut, jour_fin, tuple(zones), self.periode, tuple(vitesses))
         cached = self._plages_cache.get(cache_key)
         if cached is not None:
             return cached
         out = {}
-        for vit in (0.0, 1.0):
+        for vit in vitesses:
             for plage, est_nuit in (("jour", False), ("nuit", True)):
                 num = den = 0.0
                 for z in zones:
@@ -766,7 +861,7 @@ class Variante:
                     poids = surf if (surf == surf and surf > 0) else 1.0
                     num += (100.0 * hors / occ) * poids
                     den += poids
-                out[f'% inconfort {plage} {vit:.0f} m/s'] = (num / den) if den else np.nan
+                out[f"% inconfort {plage} {f'{vit:g}'.replace('.', ',')} m/s"] = (num / den) if den else np.nan
         self._plages_cache[cache_key] = out
         return out
 
@@ -836,6 +931,16 @@ def _parse_synthese_auto(path):
     return parse_synthese(path)
 
 
+def _chemin_meteo(fichier_meteo: str, meteo_nom: str) -> str:
+    """Chemin absolu du fichier météo effectivement chargé ('' si aucun)."""
+    if not (fichier_meteo and meteo_nom):
+        return ""
+    try:
+        return str(Path(fichier_meteo).resolve())
+    except OSError:
+        return str(fichier_meteo)
+
+
 def charger_variante(
     nom: str,
     fichier_resultats: str,
@@ -867,7 +972,8 @@ def charger_variante(
         except Exception:
             pass
         return Variante(nom=nom, df_horaire=df_h, df_synthese=df_s, df_meteo=df_m,
-                        zones=zones, meteo_nom=meteo_nom)
+                        zones=zones, meteo_nom=meteo_nom,
+                        meteo_chemin=_chemin_meteo(fichier_meteo, meteo_nom))
 
     # --- cache miss : parsing complet (SYLK .slk ou CSV Pléiades) ---
     df_h = _parse_resultats_auto(fichier_resultats)
@@ -882,4 +988,5 @@ def charger_variante(
     cache_disque.ecrire(fichier_resultats, fichier_synthese, fichier_meteo,
                         df_h, df_s, df_m, zones, df_h.attrs.get('groupes'), meteo_nom)
     return Variante(nom=nom, df_horaire=df_h, df_synthese=df_s, df_meteo=df_m,
-                    zones=zones, meteo_nom=meteo_nom)
+                    zones=zones, meteo_nom=meteo_nom,
+                    meteo_chemin=_chemin_meteo(fichier_meteo, meteo_nom))

@@ -141,6 +141,11 @@ with st.sidebar:
             c_nom, c_up, c_down, c_del = st.columns([5, 1, 1, 1])
             with c_nom:
                 st.markdown(f"• {var.nom} ({len(var.zones)} zones)")
+                st.caption(f"🌤️ {var.meteo_trace()}",
+                           help=f"{var.meteo_origine_affiche()} — "
+                                f"{var.meteo_chemin or 'chemin non renseigné'}"
+                           if var.meteo_nom else "Aucun fichier météo .try : T extérieure "
+                                                 "lue dans les résultats Pléiades si présente.")
             with c_up:
                 if st.button("↑", key=f"up_var_{i}", disabled=(i == 0), help="Monter"):
                     vs[i - 1], vs[i] = vs[i], vs[i - 1]

@@ -36,9 +36,12 @@ def _charger_cache(res: str, syn: str, met: str,
     return charger_variante("", res, syn, met)
 
 
-def charger_variante_rapide(nom: str, res: str, syn: str, met: str) -> Variante:
+def charger_variante_rapide(nom: str, res: str, syn: str, met: str,
+                            origine_meteo: str = "") -> Variante:
+    """origine_meteo : « projet » (météo par défaut) ou « specifique » (traçabilité)."""
     var = _charger_cache(res, syn, met, _mtime(res), _mtime(syn), _mtime(met))
-    return dataclasses.replace(var, nom=nom)
+    return dataclasses.replace(var, nom=nom,
+                               meteo_origine=origine_meteo if var.meteo_nom else "")
 
 
 def render_reglages():
@@ -267,7 +270,7 @@ def _section_meteo_projet():
             st.rerun()
     if ss['meteo_projet']:
         m1, m2 = st.columns([4, 1])
-        m1.caption(f"🌤️ {Path(ss['meteo_projet']).name}")
+        m1.caption(f"🌤️ {Path(ss['meteo_projet']).name}", help=ss['meteo_projet'])
         if m2.button("✕", key="clear_meteo_projet", help="Retirer la météo par défaut"):
             ss['meteo_projet'] = ''
             st.rerun()
@@ -281,11 +284,14 @@ def _section_meteo_projet():
     if fichiers:
         with st.expander("🌤️ Renommer les météos"):
             st.caption("Libellé affiché dans les tableaux et graphiques "
-                       "(ex. « Climat actuel », « RCP 8.5 »).")
+                       "(ex. « Climat actuel », « RCP 8.5 »). Le nom du fichier reste "
+                       "indiqué à côté du libellé dans les tableaux et l'annexe.")
             for f in fichiers:
                 lbl = st.text_input(f, value=ss['meteo_labels'].get(f, ''),
                                     key=f"meteolbl_{f}", placeholder=f)
                 ss['meteo_labels'][f] = lbl.strip()
+                utilisateurs = [v.nom for v in ss.variantes if v.meteo_nom == f]
+                st.caption(f"Utilisé par : {', '.join(utilisateurs)}")
 
 
 # ----------------------------------------------------------------------
@@ -352,7 +358,10 @@ def _section_ajout_variante():
             else:
                 with st.spinner(f"Chargement de « {nom_var} »…"):
                     try:
-                        var = charger_variante_rapide(nom_var, path_r, path_s, path_m or '')
+                        origine = ('specifique' if ss.sel_meteo
+                                   else 'projet' if meteo_projet else '')
+                        var = charger_variante_rapide(nom_var, path_r, path_s, path_m or '',
+                                                      origine)
                         ss.variantes.append(var)
                         ss.sel_resultats = ss.sel_synthese = ss.sel_meteo = ''
                         st.success(f"✅ « {nom_var} » chargée ({len(var.zones)} zones)")
